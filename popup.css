@@ -1,0 +1,215 @@
+:root {
+  --bg: #ffffff;
+  --card: #ffffff;
+  --border: #e5e7eb;
+  --muted: #6b7280;
+  --text: #111827;
+  --accent: #2563eb;
+  --hover: #f8fafc;
+  --radius: 10px;
+}
+
+* {
+  box-sizing: border-box
+}
+
+body {
+  margin: 0;
+  padding: 8px;
+  width: 340px;
+  max-height: 520px;
+  overflow: auto;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+}
+
+.panel {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px;
+  background: var(--card);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.title {
+  font-weight: 700;
+  font-size: 14px;
+  flex: 1;
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.search input {
+  border: 0;
+  outline: 0;
+  font-size: 12px;
+  width: 200px;
+}
+
+.icon-btn {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 4px;
+  color: var(--muted);
+  border-radius: 6px;
+}
+
+.icon-btn:hover {
+  background: var(--hover);
+  color: var(--accent)
+}
+
+.folder {
+  margin-left: 8px;
+  border-left: 1px dashed var(--border);
+  padding-left: 8px;
+  margin-top: 4px;
+}
+
+/* папка — теперь кликабельная целиком */
+.folder-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.folder-row:hover {
+  background: var(--hover);
+}
+
+.folder-icon {
+  width: 16px;
+  height: 16px;
+  display: inline-grid;
+  place-items: center;
+  font-size: 12px;
+  color: var(--muted);
+  margin-right: 2px;
+  flex: 0 0 16px;
+}
+
+.fold-toggle {
+  width: 20px;
+  height: 20px;
+  display: inline-grid;
+  place-items: center;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: default;
+  /* ← больше не кнопка */
+  user-select: none;
+  border: none;
+  background: transparent;
+}
+
+.fold-name {
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.links {
+  margin-left: 24px;
+  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.link:hover {
+  background: var(--hover);
+}
+
+.favicon {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  flex: 0 0 16px;
+}
+
+.link-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.link-title {
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.link-sub {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.link-actions {
+  display: flex;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.small-btn {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--muted);
+  padding: 4px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.small-btn:hover {
+  color: var(--accent);
+  background: var(--hover);
+}
+
+.empty {
+  padding: 12px;
+  text-align: center;
+  color: var(--muted);
+  font-style: italic;
+}
