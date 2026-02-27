@@ -16,10 +16,6 @@
    If you want the exact CSS I used for visual polish, tell me and I'll paste it separately.
 */
 
-let boundFileHandle = null;
-
-const TREE_SOURCE_KEY = 'treeSource';   // 'local' | 'file'
-
 const STORAGE_KEY = 'linkTree';
 const BACKUP_KEY = 'linkTree_backup';
 
@@ -46,90 +42,6 @@ function checkDirty() {
         setUnsaved(true);
     }
 }
-
-document.getElementById('bindFileBtn').addEventListener('click', async () => {
-    try {
-        const [handle] = await window.showOpenFilePicker({
-            types: [{
-                description: 'JSON',
-                accept: { 'application/json': ['.json'] }
-            }],
-            multiple: false
-        });
-
-        // проверка доступа
-        const perm = await handle.requestPermission({ mode: 'readwrite' });
-        if (perm !== 'granted') return;
-
-        const file = await handle.getFile();
-        const text = await file.text();
-        const tree = JSON.parse(text);
-
-        if (!Array.isArray(tree)) {
-            alert('Некорректный формат JSON');
-            return;
-        }
-
-        boundFileHandle = handle;
-
-        await chrome.storage.local.set({
-            [TREE_SOURCE_KEY]: 'file'
-        });
-
-
-        // сразу применяем
-        currentTree = normalizeTree(tree);
-        savedTreeSnapshot = clone(currentTree);
-        setUnsaved(false);
-        renderTree(currentTree);
-
-
-        alert('Файл привязан');
-    } catch (e) {
-        console.warn('Привязка отменена', e);
-    }
-
-    await chrome.storage.local.set({ [STORAGE_KEY]: currentTree });
-});
-
-document.getElementById('unbindFileBtn').addEventListener('click', async () => {
-    await chrome.storage.local.remove([BOUND_FILE_KEY]);
-    await chrome.storage.local.set({ [TREE_SOURCE_KEY]: 'local' });
-    alert('Файл отвязан');
-});
-
-async function loadTree() {
-  const { [TREE_SOURCE_KEY]: source, [STORAGE_KEY]: stored } =
-    await chrome.storage.local.get([TREE_SOURCE_KEY, STORAGE_KEY]);
-
-  if (source === 'file' && boundFileHandle) {
-    const file = await boundFileHandle.getFile();
-    return JSON.parse(await file.text());
-  }
-
-  return safeArray(stored);
-}
-
-async function saveTreeToBoundFile(tree) {
-  if (!boundFileHandle) {
-    throw new Error('Файл не привязан (handle потерян)');
-  }
-
-  const writable = await boundFileHandle.createWritable();
-  await writable.write(JSON.stringify(tree, null, 2));
-  await writable.close();
-}
-
-
-chrome.storage.local.get([TREE_SOURCE_KEY], res => {
-    const el = document.getElementById('sourceIndicator');
-    if (!el) return;
-
-    el.textContent =
-        res[TREE_SOURCE_KEY] === 'file'
-            ? '📎 JSON (read/write)'
-            : '💾 Локальное хранилище';
-});
 
 /* ----------------- Normalization ----------------- */
 function normalizeNode(node) {
@@ -224,6 +136,26 @@ function insertLinkIntoParent(list, parentId, index, linkToInsert) {
 function swapInArray(arr, i, j) { if (!Array.isArray(arr)) return; if (i < 0 || j < 0 || i >= arr.length || j >= arr.length) return; const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp; }
 function removeEmptyFolders(list) { if (!Array.isArray(list)) return []; const out = []; for (let i = 0; i < list.length; i++) { const n = list[i]; if (!n) continue; n.children = removeEmptyFolders(n.children); if (safeArray(n.children).length === 0 && safeArray(n.links).length === 0) continue; out.push(n); } return out; }
 function sortTreeInPlace(list) { if (!Array.isArray(list)) return; list.sort((a, b) => ((a?.title || '').toLowerCase()).localeCompare((b?.title || '').toLowerCase())); for (let i = 0; i < list.length; i++) { const node = list[i]; if (node && Array.isArray(node.children)) sortTreeInPlace(node.children); if (node && Array.isArray(node.links)) node.links.sort((x, y) => ((x?.title || '').toLowerCase()).localeCompare((y?.title || '').toLowerCase())); } }
+
+function moveLink(linkId, targetFolderId, targetIndex) {
+    if (!linkId || !targetFolderId) return;
+
+    const moved = detachLinkById(currentTree, linkId);
+    if (!moved) return;
+
+    const loc = findParentAndIndex(currentTree, targetFolderId);
+    if (!loc) return;
+
+    const folder = loc.parentArray[loc.index];
+    folder.links = safeArray(folder.links);
+
+    if (targetIndex == null) {
+        folder.links.push(moved);
+    } else {
+        const idx = Math.max(0, Math.min(targetIndex, folder.links.length));
+        folder.links.splice(idx, 0, moved);
+    }
+}
 
 /* ----------------- Filter ----------------- */
 function filterTree(list, q) { if (!q) return clone(list); const needle = q.toLowerCase(); function filterNode(node) { if (!node) return null; const titleMatch = (node.title || '').toLowerCase().includes(needle); const links = safeArray(node.links).filter(l => (((l?.title || '') + ' ' + (l?.url || '')).toLowerCase().includes(needle))).map(l => ({ ...l })); const children = []; safeArray(node.children).forEach(c => { const fc = filterNode(c); if (fc) children.push(fc); }); if (titleMatch || links.length || children.length) return { id: node.id, type: 'folder', title: node.title, links, children }; return null; } const out = []; safeArray(list).forEach(n => { const f = filterNode(n); if (f) out.push(f); }); return out; }
@@ -326,37 +258,131 @@ function createLinkRow(link) {
 
     // allow drop on link-row to reorder links inside same parent or drop before/after
     row.addEventListener('dragover', (e) => {
-        e.preventDefault(); // show thin indicator
-        row.style.boxShadow = 'inset 0 2px 0 rgba(37,99,235,0.12)';
+        e.preventDefault();
+
+        const rect = row.getBoundingClientRect();
+        const mid = rect.top + rect.height / 2;
+
+        row.classList.toggle('drop-before', e.clientY < mid);
+        row.classList.toggle('drop-after', e.clientY >= mid);
     });
-    row.addEventListener('dragleave', () => { row.style.boxShadow = ''; });
+
+    row.addEventListener('dragleave', () => {
+        row.classList.remove('drop-before', 'drop-after');
+    });
+
     row.addEventListener('drop', (e) => {
-        e.preventDefault(); row.style.boxShadow = ''; let payload = null; try { payload = JSON.parse(e.dataTransfer.getData('application/json')); } catch { payload = { type: draggedType, id: draggedNodeId || draggedLinkId }; }
-        if (!payload) return; if (payload.type === 'link') {
-            if (payload.id === link.id) return; const moved = detachLinkById(currentTree, payload.id); if (!moved) return; // find parent of this link
-            const parent = findLinkParent(currentTree, link.id); if (!parent) return; parent.parentNode.links = safeArray(parent.parentNode.links); const insertIndex = parent.index; parent.parentNode.links.splice(insertIndex, 0, moved); setUnsaved(true); renderTree(currentTree);
-        }
-        else if (payload.type === 'node') { // dropping folder onto link-row -> insert node as sibling of link's parent folder
-            const node = detachNodeById(currentTree, payload.id); if (!node) return; const parentFolder = findLinkParent(currentTree, link.id); if (!parentFolder) { currentTree.push(node); } else { const pNode = parentFolder.parentNode; pNode.children = safeArray(pNode.children); pNode.children.push(node); } setUnsaved(true); renderTree(currentTree);
-        }
+        e.preventDefault();
+        row.classList.remove('drop-before', 'drop-after');
+
+        if (draggedType !== 'link' || draggedLinkId === link.id) return;
+
+        const parent = findLinkParent(currentTree, link.id);
+        if (!parent) return;
+
+        const rect = row.getBoundingClientRect();
+        const insertIndex =
+            e.clientY < rect.top + rect.height / 2
+                ? parent.index
+                : parent.index + 1;
+
+        moveLink(draggedLinkId, parent.parentNode.id, insertIndex);
+
+        setUnsaved(true);
+        renderTree(currentTree);
     });
 
     return row;
 }
 
 function renderNode(node, container) {
-    if (!node) return; const wrap = document.createElement('div'); wrap.className = 'folder'; const header = createNodeRow(node); wrap.appendChild(header);
-    const linksWrap = document.createElement('div'); linksWrap.className = 'links'; linksWrap.style.transition = 'outline .12s ease';
-    linksWrap.addEventListener('dragover', (e) => { e.preventDefault(); linksWrap.style.outline = '2px dashed rgba(37,99,235,0.12)'; }); linksWrap.addEventListener('dragleave', () => { linksWrap.style.outline = ''; }); linksWrap.addEventListener('drop', (e) => {
-        e.preventDefault(); linksWrap.style.outline = ''; let payload = null; try { payload = JSON.parse(e.dataTransfer.getData('application/json')); } catch { payload = { type: draggedType, id: draggedNodeId || draggedLinkId }; }
-        if (!payload) return; if (payload.type === 'node') { if (payload.id === node.id) return; const moved = detachNodeById(currentTree, payload.id); if (!moved) return; const loc = findParentAndIndex(currentTree, node.id); if (loc) { const parentNode = loc.parentArray[loc.index]; parentNode.children = safeArray(parentNode.children); parentNode.children.push(moved); } else currentTree.push(moved); setUnsaved(true); renderTree(currentTree); }
-        else if (payload.type === 'link') { if (!payload.id) return; const movedLinkObj = detachLinkById(currentTree, payload.id); if (!movedLinkObj) return; const loc = findParentAndIndex(currentTree, node.id); if (!loc) { if (currentTree.length > 0) { currentTree[0].links = safeArray(currentTree[0].links); currentTree[0].links.push(movedLinkObj); } } else { const parentNode = loc.parentArray[loc.index]; parentNode.links = safeArray(parentNode.links); parentNode.links.push(movedLinkObj); } setUnsaved(true); renderTree(currentTree); }
+    if (!node) return;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'folder';
+
+    /* ---------- HEADER (folder row) ---------- */
+    const header = createNodeRow(node);
+    wrap.appendChild(header);
+
+    /* ---------- LINKS + CHILDREN CONTAINER ---------- */
+    const linksWrap = document.createElement('div');
+    linksWrap.className = 'links';
+    linksWrap.style.transition = 'outline .12s ease';
+
+    /* ---------- DRAG OVER (visual hint) ---------- */
+    linksWrap.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        linksWrap.style.outline = '2px dashed rgba(37,99,235,0.12)';
     });
 
-    const lks = safeArray(node.links); for (let i = 0; i < lks.length; i++) { linksWrap.appendChild(createLinkRow(lks[i])); }
-    const ch = safeArray(node.children); for (let i = 0; i < ch.length; i++) { renderNode(ch[i], linksWrap); }
-    wrap.appendChild(linksWrap); container.appendChild(wrap);
+    linksWrap.addEventListener('dragleave', () => {
+        linksWrap.style.outline = '';
+    });
+
+    /* ---------- DROP ---------- */
+    linksWrap.addEventListener('drop', (e) => {
+        e.preventDefault();
+        linksWrap.style.outline = '';
+
+        let payload = null;
+        try {
+            payload = JSON.parse(e.dataTransfer.getData('application/json'));
+        } catch {
+            payload = { type: draggedType, id: draggedNodeId || draggedLinkId };
+        }
+
+        if (!payload || !payload.id) return;
+
+        /* ===== DROP FOLDER INTO FOLDER ===== */
+        if (payload.type === 'node') {
+            if (payload.id === node.id) return;
+
+            const moved = detachNodeById(currentTree, payload.id);
+            if (!moved) return;
+
+            const loc = findParentAndIndex(currentTree, node.id);
+            if (loc) {
+                const target = loc.parentArray[loc.index];
+                target.children = safeArray(target.children);
+                target.children.push(moved);
+            } else {
+                currentTree.push(moved);
+            }
+
+            setUnsaved(true);
+            renderTree(currentTree);
+            return;
+        }
+
+        /* ===== DROP LINK INTO FOLDER (append) ===== */
+        if (payload.type === 'link') {
+            if (!node.links) node.links = [];
+
+            moveLink(payload.id, node.id); // ← ВСЕГДА В КОНЕЦ ПАПКИ
+
+            setUnsaved(true);
+            renderTree(currentTree);
+            return;
+        }
+    });
+
+    /* ---------- LINKS ---------- */
+    const links = safeArray(node.links);
+    for (let i = 0; i < links.length; i++) {
+        linksWrap.appendChild(createLinkRow(links[i]));
+    }
+
+    /* ---------- CHILD FOLDERS ---------- */
+    const children = safeArray(node.children);
+    for (let i = 0; i < children.length; i++) {
+        renderNode(children[i], linksWrap);
+    }
+
+    wrap.appendChild(linksWrap);
+    container.appendChild(wrap);
 }
+
 
 function renderTree(tree) {
     document.querySelectorAll('.node-row.drop-before,.node-row.drop-after').forEach(el => el.classList.remove('drop-before', 'drop-after'));
@@ -373,29 +399,14 @@ const elAddRoot = $('addRoot'); const elSave = $('saveBtn'); const elCancel = $(
 
 elAddRoot.addEventListener('click', () => { currentTree = safeArray(currentTree); currentTree.push({ id: uid(), type: 'folder', title: 'New root', children: [], links: [] }); setUnsaved(true); renderTree(currentTree); });
 // === Replace broken elSave handler with this ===
-elSave.addEventListener('click', async () => {
-    try {
-        const normalized = normalizeTree(currentTree);
-        const { [TREE_SOURCE_KEY]: source } =
-            await chrome.storage.local.get([TREE_SOURCE_KEY]);
+elSave.addEventListener('click', () => {
+    const normalized = normalizeTree(currentTree);
 
-        if (source === 'file') {
-            await saveTreeToBoundFile(normalized);
-            savedTreeSnapshot = clone(normalized);
-            setUnsaved(false);
-            alert('Сохранено в файл');
-            return;
-        }
-
-        persistToStorage(normalized, () => {
-            savedTreeSnapshot = clone(normalized);
-            setUnsaved(false);
-            alert('Сохранено');
-        });
-    } catch (err) {
-        console.error(err);
-        alert('Ошибка при сохранении');
-    }
+    persistToStorage(normalized, () => {
+        savedTreeSnapshot = clone(normalized);
+        setUnsaved(false);
+        alert('Сохранено');
+    });
 });
 
 elCancel.addEventListener('click', () => { if (!unsaved) return; if (!confirm('Discard unsaved changes?')) return; currentTree = clone(savedTreeSnapshot); setUnsaved(false); renderTree(currentTree); });
@@ -411,11 +422,13 @@ window.addEventListener('beforeunload', (e) => { if (unsaved) { e.preventDefault
 
 /* ----------------- Boot ----------------- */
 async function loadInitial() {
-    const tree = normalizeTree(await loadTree());
-    currentTree = clone(tree);
-    savedTreeSnapshot = clone(tree);
-    setUnsaved(false);
-    renderTree(currentTree);
+    chrome.storage.local.get([STORAGE_KEY], res => {
+        const tree = normalizeTree(res[STORAGE_KEY] || []);
+        currentTree = clone(tree);
+        savedTreeSnapshot = clone(tree);
+        setUnsaved(false);
+        renderTree(currentTree);
+    });
 }
 
 loadInitial();
