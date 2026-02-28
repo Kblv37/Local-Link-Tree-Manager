@@ -1,13 +1,16 @@
 {
   "manifest_version": 3,
   "name": "Local Link Tree Manager",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Локальный древовидный менеджер ссылок",
-  "permissions": ["storage"],
+  "permissions": [
+    "storage",
+    "downloads"
+  ],
   "commands": {
     "open-search-popup": {
       "suggested_key": {
-        "default": "Ctrl+Q",
+        "default": "Alt+Q",
         "mac": "Command+Q"
       },
       "description": "Открыть поиск в popup"
@@ -20,5 +23,4 @@
     "service_worker": "background.js"
   },
   "options_page": "options.html"
-  
 }

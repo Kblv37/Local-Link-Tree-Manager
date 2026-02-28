@@ -61,6 +61,7 @@ function normalizeNode(node) {
 function normalizeTree(data) { return safeArray(data).map(normalizeNode).filter(Boolean); }
 
 /* ----------------- Storage helpers ----------------- */
+
 function loadFromStorage(cb) {
     chrome.storage.local.get([STORAGE_KEY], res => {
         try { cb(normalizeTree(res?.[STORAGE_KEY])); } catch { cb([]); }
@@ -78,6 +79,102 @@ function overwriteWithoutBackup(tree, cb) { chrome.storage.local.set({ [STORAGE_
 function loadBackup(cb) { chrome.storage.local.get([BACKUP_KEY], res => cb(normalizeTree(res?.[BACKUP_KEY]))); }
 
 /* ----------------- Tree helpers ----------------- */
+function parseTxtToTree(text) {
+    const lines = text.split('\n');
+    const root = [];
+    const stack = [{ depth: -1, node: null, children: root }];
+
+    let lastLink = null;
+
+    lines.forEach(line => {
+        if (!line.trim()) return;
+        if (line.startsWith('===')) return;
+
+        const depth = (line.match(/^ */)[0].length) / 2;
+        const content = line.trim();
+
+        // ===== FOLDER =====
+        if (content.startsWith('📁')) {
+            const folder = {
+                id: uid(),
+                type: 'folder',
+                title: content.replace('📁', '').trim(),
+                children: [],
+                links: []
+            };
+
+            while (stack.length && stack[stack.length - 1].depth >= depth) {
+                stack.pop();
+            }
+
+            stack[stack.length - 1].children.push(folder);
+            stack.push({ depth, node: folder, children: folder.children });
+
+            lastLink = null;
+        }
+
+        // ===== LINK TITLE =====
+        else if (content.startsWith('🔗')) {
+            const link = {
+                id: uid(),
+                title: content.replace('🔗', '').trim(),
+                url: ''
+            };
+
+            const parentFolder = stack[stack.length - 1].node;
+            if (parentFolder) {
+                parentFolder.links.push(link);
+                lastLink = link;
+            }
+        }
+
+        // ===== URL LINE =====
+        else if (content.startsWith('http')) {
+            if (lastLink) {
+                lastLink.url = content.trim();
+            }
+        }
+    });
+
+    return root;
+}
+
+function exportTreeToTxt(tree) {
+    const lines = [];
+
+    lines.push('=== LINK TREE ===');
+    lines.push('');
+
+    function walk(nodes, depth = 0) {
+        nodes.forEach(node => {
+            const indent = '  '.repeat(depth);
+            lines.push(`${indent}📁 ${node.title}`);
+
+            node.links.forEach(link => {
+                lines.push(`${indent}  🔗 ${link.title}`);
+                lines.push(`${indent}     ${link.url}`);
+            });
+
+            walk(node.children, depth + 1);
+            if (depth === 0) lines.push('');
+        });
+    }
+
+    walk(tree);
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+
+    chrome.downloads.download({
+        url,
+        filename: 'linkTree.txt',
+        conflictAction: 'overwrite',
+        saveAs: false
+    });
+
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 function findParentAndIndex(list, id, parentNode = null) {
     if (!Array.isArray(list)) return null;
     for (let i = 0; i < list.length; i++) {
@@ -134,87 +231,212 @@ function insertLinkIntoParent(list, parentId, index, linkToInsert) {
     if (!loc) return false; const parentNode = loc.parentArray[loc.index]; parentNode.links = safeArray(parentNode.links); parentNode.links.splice(index, 0, linkToInsert); return true;
 }
 function swapInArray(arr, i, j) { if (!Array.isArray(arr)) return; if (i < 0 || j < 0 || i >= arr.length || j >= arr.length) return; const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp; }
-function removeEmptyFolders(list) { if (!Array.isArray(list)) return []; const out = []; for (let i = 0; i < list.length; i++) { const n = list[i]; if (!n) continue; n.children = removeEmptyFolders(n.children); if (safeArray(n.children).length === 0 && safeArray(n.links).length === 0) continue; out.push(n); } return out; }
-function sortTreeInPlace(list) { if (!Array.isArray(list)) return; list.sort((a, b) => ((a?.title || '').toLowerCase()).localeCompare((b?.title || '').toLowerCase())); for (let i = 0; i < list.length; i++) { const node = list[i]; if (node && Array.isArray(node.children)) sortTreeInPlace(node.children); if (node && Array.isArray(node.links)) node.links.sort((x, y) => ((x?.title || '').toLowerCase()).localeCompare((y?.title || '').toLowerCase())); } }
 
-function moveLink(linkId, targetFolderId, targetIndex) {
-    if (!linkId || !targetFolderId) return;
-
-    const moved = detachLinkById(currentTree, linkId);
-    if (!moved) return;
-
-    const loc = findParentAndIndex(currentTree, targetFolderId);
+function moveFolder(folderId, direction) {
+    const loc = findParentAndIndex(currentTree, folderId);
     if (!loc) return;
 
-    const folder = loc.parentArray[loc.index];
-    folder.links = safeArray(folder.links);
+    const { parentArray, index } = loc;
+    const newIndex = index + direction;
 
-    if (targetIndex == null) {
-        folder.links.push(moved);
-    } else {
-        const idx = Math.max(0, Math.min(targetIndex, folder.links.length));
-        folder.links.splice(idx, 0, moved);
-    }
+    if (newIndex < 0 || newIndex >= parentArray.length) return;
+
+    swapInArray(parentArray, index, newIndex);
+
+    setUnsaved(true);
+    renderTree(currentTree);
 }
+
+function moveLinkUpDown(linkId, direction) {
+    const loc = findLinkParent(currentTree, linkId);
+    if (!loc) return;
+
+    const { parentNode, index } = loc;
+    const links = parentNode.links;
+
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= links.length) return;
+
+    swapInArray(links, index, newIndex);
+
+    setUnsaved(true);
+    renderTree(currentTree);
+}
+
+
+
+function removeEmptyFolders(list) { if (!Array.isArray(list)) return []; const out = []; for (let i = 0; i < list.length; i++) { const n = list[i]; if (!n) continue; n.children = removeEmptyFolders(n.children); if (safeArray(n.children).length === 0 && safeArray(n.links).length === 0) continue; out.push(n); } return out; }
+function sortTreeInPlace(list) { if (!Array.isArray(list)) return; list.sort((a, b) => ((a?.title || '').toLowerCase()).localeCompare((b?.title || '').toLowerCase())); for (let i = 0; i < list.length; i++) { const node = list[i]; if (node && Array.isArray(node.children)) sortTreeInPlace(node.children); if (node && Array.isArray(node.links)) node.links.sort((x, y) => ((x?.title || '').toLowerCase()).localeCompare((y?.title || '').toLowerCase())); } }
 
 /* ----------------- Filter ----------------- */
 function filterTree(list, q) { if (!q) return clone(list); const needle = q.toLowerCase(); function filterNode(node) { if (!node) return null; const titleMatch = (node.title || '').toLowerCase().includes(needle); const links = safeArray(node.links).filter(l => (((l?.title || '') + ' ' + (l?.url || '')).toLowerCase().includes(needle))).map(l => ({ ...l })); const children = []; safeArray(node.children).forEach(c => { const fc = filterNode(c); if (fc) children.push(fc); }); if (titleMatch || links.length || children.length) return { id: node.id, type: 'folder', title: node.title, links, children }; return null; } const out = []; safeArray(list).forEach(n => { const f = filterNode(n); if (f) out.push(f); }); return out; }
 
 /* ----------------- UI State ----------------- */
 let currentTree = []; let savedTreeSnapshot = []; let unsaved = false; let movingNode = null; let movingLink = null; let currentRenderTree = null; let currentQuery = '';
-// drag state
-let draggedNodeId = null; let draggedLinkId = null; let draggedType = null; // 'node' or 'link'
 
-function setUnsaved(flag) { unsaved = !!flag; const el = document.getElementById('unsavedIndicator'); if (el) el.style.display = unsaved ? 'inline-block' : 'none'; }
-
-
-
+function setUnsaved(flag) {
+    unsaved = !!flag;
+    const el = document.getElementById('unsavedIndicator');
+    if (el) el.style.display = unsaved ? 'inline-block' : 'none';
+}
 
 /* ----------------- Rendering ----------------- */
 function createNodeRow(node) {
-    const row = document.createElement('div'); row.className = 'node-row';
+    const row = document.createElement('div');
+    row.className = 'node-row';
+
     // left icon + title
-    const leftWrap = document.createElement('div'); leftWrap.style.display = 'flex'; leftWrap.style.alignItems = 'center'; leftWrap.style.gap = '8px'; leftWrap.style.flex = '1';
-    const icon = document.createElement('div'); icon.className = 'icon'; icon.textContent = '📁';
-    const title = document.createElement('input'); title.className = 'title-input'; title.value = node.title || ''; title.addEventListener('input', () => { const loc = findParentAndIndex(currentTree, node.id); if (loc) { loc.parentArray[loc.index].title = title.value; setUnsaved(true); } });
-    leftWrap.append(icon, title);
+    const leftWrap = document.createElement('div');
+    leftWrap.style.display = 'flex';
+    leftWrap.style.alignItems = 'center';
+    leftWrap.style.gap = '8px';
+    leftWrap.style.flex = '1';
 
-    // right actions: paste, add child/link, cut, delete, drag handle
-    const actions = document.createElement('div'); actions.className = 'node-actions'; actions.style.display = 'flex'; actions.style.gap = '6px'; actions.style.alignItems = 'center';
+    const icon = document.createElement('div');
+    icon.className = 'icon';
+    icon.textContent = '📁';
 
-    const btnPaste = document.createElement('button'); btnPaste.className = 'btn small'; btnPaste.textContent = '⤓'; btnPaste.title = 'Paste here'; btnPaste.addEventListener('click', (e) => { e.stopPropagation(); if (movingNode) { const loc = findParentAndIndex(currentTree, node.id); if (!loc) return; loc.parentArray[loc.index].children = safeArray(loc.parentArray[loc.index].children); loc.parentArray[loc.index].children.push(clone(movingNode)); movingNode = null; setUnsaved(true); renderTree(currentTree); } if (movingLink) { const loc = findParentAndIndex(currentTree, node.id); if (!loc) return; loc.parentArray[loc.index].links = safeArray(loc.parentArray[loc.index].links); loc.parentArray[loc.index].links.push(clone(movingLink)); movingLink = null; setUnsaved(true); renderTree(currentTree); } });
-
-    const btnAddF = document.createElement('button'); btnAddF.className = 'btn small'; btnAddF.textContent = '+📁'; btnAddF.title = 'Add child'; btnAddF.addEventListener('click', (e) => { e.stopPropagation(); const loc = findParentAndIndex(currentTree, node.id); if (!loc) return; const target = loc.parentArray[loc.index]; target.children = safeArray(target.children); target.children.push({ id: uid(), type: 'folder', title: 'New folder', children: [], links: [] }); setUnsaved(true); renderTree(currentTree); });
-
-    const btnAddL = document.createElement('button'); btnAddL.className = 'btn small'; btnAddL.textContent = '+🔗'; btnAddL.title = 'Add link'; btnAddL.addEventListener('click', (e) => { e.stopPropagation(); const loc = findParentAndIndex(currentTree, node.id); if (!loc) return; const target = loc.parentArray[loc.index]; target.links = safeArray(target.links); target.links.push({ id: uid(), title: '', url: '' }); setUnsaved(true); renderTree(currentTree); });
-
-    const btnCut = document.createElement('button'); btnCut.className = 'btn small'; btnCut.textContent = '✂'; btnCut.title = 'Cut (move)'; btnCut.addEventListener('click', (e) => { e.stopPropagation(); const loc = findParentAndIndex(currentTree, node.id); if (!loc) return; movingNode = clone(loc.parentArray[loc.index]); loc.parentArray.splice(loc.index, 1); movingLink = null; setUnsaved(true); renderTree(currentTree); });
-
-    const btnDel = document.createElement('button'); btnDel.className = 'btn small btn-danger'; btnDel.textContent = '🗑'; btnDel.title = 'Delete'; btnDel.addEventListener('click', (e) => { e.stopPropagation(); if (!confirm('Delete folder and everything inside?')) return; const loc = findParentAndIndex(currentTree, node.id); if (!loc) return; loc.parentArray.splice(loc.index, 1); setUnsaved(true); renderTree(currentTree); });
-
-    // drag handle on right
-    const handle = document.createElement('div'); handle.className = 'drag-handle'; handle.textContent = '≡'; handle.draggable = true; handle.addEventListener('dragstart', (e) => { draggedNodeId = node.id; draggedType = 'node'; try { e.dataTransfer.setData('application/json', JSON.stringify({ type: 'node', id: node.id })); } catch { } e.dataTransfer.effectAllowed = 'move'; handle.classList.add('dragging'); }); handle.addEventListener('dragend', () => { draggedNodeId = null; draggedType = null; handle.classList.remove('dragging'); document.querySelectorAll('.node-row.drop-before,.node-row.drop-after').forEach(el => el.classList.remove('drop-before', 'drop-after')); document.querySelectorAll('.links').forEach(el => el.style.outline = ''); });
-
-    actions.append(btnPaste, btnAddF, btnAddL, btnCut, btnDel, handle);
-    row.append(leftWrap, actions);
-
-    // row drop behaviour (before/after insert)
-    row.addEventListener('dragover', (e) => { e.preventDefault(); document.querySelectorAll('.node-row.drop-before,.node-row.drop-after').forEach(el => el.classList.remove('drop-before', 'drop-after')); const rect = row.getBoundingClientRect(); const mid = rect.top + rect.height / 2; if (e.clientY < mid) row.classList.add('drop-before'); else row.classList.add('drop-after'); });
-    row.addEventListener('dragleave', () => { row.classList.remove('drop-before', 'drop-after'); });
-    row.addEventListener('drop', (e) => {
-        e.preventDefault(); row.classList.remove('drop-before', 'drop-after'); let payload = null; try { payload = JSON.parse(e.dataTransfer.getData('application/json')); } catch { payload = { type: draggedType, id: draggedNodeId || draggedLinkId }; }
-        if (!payload || !payload.type) return; if (payload.type === 'node') { if (!payload.id || payload.id === node.id) return; const moved = detachNodeById(currentTree, payload.id); if (!moved) return; const targetLoc = findParentAndIndex(currentTree, node.id); if (!targetLoc) { const arr = currentTree; const idx = arr.findIndex(x => x.id === node.id); const insertIndex = (e.clientY < (row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2)) ? idx : idx + 1; arr.splice(insertIndex, 0, moved); } else { const parentArr = targetLoc.parentArray; const idx = targetLoc.index; const insertIndex = (e.clientY < (row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2)) ? idx : idx + 1; parentArr.splice(insertIndex, 0, moved); } setUnsaved(true); renderTree(currentTree); }
-        else if (payload.type === 'link') {
-            if (!payload.id) return; const movedLinkObj = detachLinkById(currentTree, payload.id); if (!movedLinkObj) return; // insert link into this folder at computed index
-            const loc = findParentAndIndex(currentTree, node.id); if (!loc) { // root -> add as top-level folder? we'll append to root's links can't. skip
-                // fallback: append to first root if exists
-                if (currentTree.length > 0) { currentTree[0].links = safeArray(currentTree[0].links); currentTree[0].links.push(movedLinkObj); }
-            } else {
-                const parentNode = loc.parentArray[loc.index]; parentNode.links = safeArray(parentNode.links); parentNode.links.push(movedLinkObj);
-            }
-            setUnsaved(true); renderTree(currentTree);
+    const title = document.createElement('input');
+    title.className = 'title-input';
+    title.value = node.title || '';
+    title.addEventListener('input', () => {
+        const loc = findParentAndIndex(currentTree, node.id);
+        if (loc) {
+            loc.parentArray[loc.index].title = title.value;
+            setUnsaved(true);
         }
     });
+
+    leftWrap.append(icon, title);
+
+    // right actions: paste, add child/link, move up/down, cut, delete
+    const actions = document.createElement('div');
+    actions.className = 'node-actions';
+    actions.style.display = 'flex';
+    actions.style.gap = '6px';
+    actions.style.alignItems = 'center';
+
+    // Paste (for movingNode / movingLink)
+    const btnPaste = document.createElement('button');
+    btnPaste.className = 'btn small';
+    btnPaste.textContent = '⤓';
+    btnPaste.title = 'Paste here';
+    btnPaste.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const loc = findParentAndIndex(currentTree, node.id);
+        if (!loc) return;
+
+        // Paste node (folder)
+        if (movingNode) {
+            const target = loc.parentArray[loc.index];
+            target.children = safeArray(target.children);
+            // clone to avoid accidental shared refs
+            target.children.push(clone(movingNode));
+            movingNode = null;
+            setUnsaved(true);
+            renderTree(currentTree);
+            return;
+        }
+
+        // Paste link
+        if (movingLink) {
+            const target = loc.parentArray[loc.index];
+            target.links = safeArray(target.links);
+            target.links.push(clone(movingLink));
+            movingLink = null;
+            setUnsaved(true);
+            renderTree(currentTree);
+            return;
+        }
+    });
+
+    // Add child folder
+    const btnAddF = document.createElement('button');
+    btnAddF.className = 'btn small';
+    btnAddF.textContent = '+📁';
+    btnAddF.title = 'Add child';
+    btnAddF.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const loc = findParentAndIndex(currentTree, node.id);
+        if (!loc) return;
+        const target = loc.parentArray[loc.index];
+        target.children = safeArray(target.children);
+        target.children.push({ id: uid(), type: 'folder', title: 'New folder', children: [], links: [] });
+        setUnsaved(true);
+        renderTree(currentTree);
+    });
+
+    // Add link
+    const btnAddL = document.createElement('button');
+    btnAddL.className = 'btn small';
+    btnAddL.textContent = '+🔗';
+    btnAddL.title = 'Add link';
+    btnAddL.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const loc = findParentAndIndex(currentTree, node.id);
+        if (!loc) return;
+        const target = loc.parentArray[loc.index];
+        target.links = safeArray(target.links);
+        target.links.push({ id: uid(), title: '', url: '' });
+        setUnsaved(true);
+        renderTree(currentTree);
+    });
+
+    // Move up
+    const btnUp = document.createElement('button');
+    btnUp.className = 'btn small';
+    btnUp.textContent = '⬆';
+    btnUp.title = 'Move up';
+    btnUp.addEventListener('click', (e) => {
+        e.stopPropagation();
+        moveFolder(node.id, -1);
+    });
+
+    // Move down
+    const btnDown = document.createElement('button');
+    btnDown.className = 'btn small';
+    btnDown.textContent = '⬇';
+    btnDown.title = 'Move down';
+    btnDown.addEventListener('click', (e) => {
+        e.stopPropagation();
+        moveFolder(node.id, 1);
+    });
+
+    // Cut (move)
+    const btnCut = document.createElement('button');
+    btnCut.className = 'btn small';
+    btnCut.textContent = '✂';
+    btnCut.title = 'Cut (move)';
+    btnCut.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const loc = findParentAndIndex(currentTree, node.id);
+        if (!loc) return;
+        // store a clone as the moving node and remove original
+        movingNode = clone(loc.parentArray[loc.index]);
+        loc.parentArray.splice(loc.index, 1);
+        movingLink = null;
+        setUnsaved(true);
+        renderTree(currentTree);
+    });
+
+    // Delete
+    const btnDel = document.createElement('button');
+    btnDel.className = 'btn small btn-danger';
+    btnDel.textContent = '🗑';
+    btnDel.title = 'Delete';
+    btnDel.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!confirm('Delete folder and everything inside?')) return;
+        const loc = findParentAndIndex(currentTree, node.id);
+        if (!loc) return;
+        loc.parentArray.splice(loc.index, 1);
+        setUnsaved(true);
+        renderTree(currentTree);
+    });
+
+    // Append actions in the chosen order
+    actions.append(btnPaste, btnAddF, btnAddL, btnUp, btnDown, btnCut, btnDel);
+    row.append(leftWrap, actions);
 
     return row;
 }
@@ -250,47 +472,24 @@ function createLinkRow(link) {
     const btnCut = document.createElement('button'); btnCut.className = 'btn small'; btnCut.textContent = '✂'; btnCut.title = 'Cut link'; btnCut.addEventListener('click', (e) => { e.stopPropagation(); const p = findLinkParent(currentTree, link.id); if (!p) return; movingLink = clone(p.parentNode.links[p.index]); p.parentNode.links.splice(p.index, 1); movingNode = null; setUnsaved(true); renderTree(currentTree); });
     const btnDel = document.createElement('button'); btnDel.className = 'btn small btn-danger'; btnDel.textContent = '🗑'; btnDel.title = 'Delete link'; btnDel.addEventListener('click', (e) => { e.stopPropagation(); const p = findLinkParent(currentTree, link.id); if (!p) return; p.parentNode.links.splice(p.index, 1); setUnsaved(true); renderTree(currentTree); });
 
-    // drag handle for link
-    const handle = document.createElement('div'); handle.className = 'drag-handle'; handle.textContent = '≡'; handle.draggable = true; handle.addEventListener('dragstart', (e) => { draggedLinkId = link.id; draggedType = 'link'; try { e.dataTransfer.setData('application/json', JSON.stringify({ type: 'link', id: link.id })); } catch { } e.dataTransfer.effectAllowed = 'move'; handle.classList.add('dragging'); }); handle.addEventListener('dragend', () => { draggedLinkId = null; draggedType = null; handle.classList.remove('dragging'); document.querySelectorAll('.links').forEach(el => el.style.outline = ''); });
+    const btnUp = document.createElement('button');
+    btnUp.className = 'btn small';
+    btnUp.textContent = '⬆';
+    btnUp.onclick = (e) => {
+        e.stopPropagation();
+        moveLinkUpDown(link.id, -1);
+    };
 
-    actions.append(btnCut, btnDel, handle);
+    const btnDown = document.createElement('button');
+    btnDown.className = 'btn small';
+    btnDown.textContent = '⬇';
+    btnDown.onclick = (e) => {
+        e.stopPropagation();
+        moveLinkUpDown(link.id, 1);
+    };
+
+    actions.append(btnUp, btnDown, btnCut, btnDel);
     row.append(left, actions);
-
-    // allow drop on link-row to reorder links inside same parent or drop before/after
-    row.addEventListener('dragover', (e) => {
-        e.preventDefault();
-
-        const rect = row.getBoundingClientRect();
-        const mid = rect.top + rect.height / 2;
-
-        row.classList.toggle('drop-before', e.clientY < mid);
-        row.classList.toggle('drop-after', e.clientY >= mid);
-    });
-
-    row.addEventListener('dragleave', () => {
-        row.classList.remove('drop-before', 'drop-after');
-    });
-
-    row.addEventListener('drop', (e) => {
-        e.preventDefault();
-        row.classList.remove('drop-before', 'drop-after');
-
-        if (draggedType !== 'link' || draggedLinkId === link.id) return;
-
-        const parent = findLinkParent(currentTree, link.id);
-        if (!parent) return;
-
-        const rect = row.getBoundingClientRect();
-        const insertIndex =
-            e.clientY < rect.top + rect.height / 2
-                ? parent.index
-                : parent.index + 1;
-
-        moveLink(draggedLinkId, parent.parentNode.id, insertIndex);
-
-        setUnsaved(true);
-        renderTree(currentTree);
-    });
 
     return row;
 }
@@ -309,63 +508,6 @@ function renderNode(node, container) {
     const linksWrap = document.createElement('div');
     linksWrap.className = 'links';
     linksWrap.style.transition = 'outline .12s ease';
-
-    /* ---------- DRAG OVER (visual hint) ---------- */
-    linksWrap.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        linksWrap.style.outline = '2px dashed rgba(37,99,235,0.12)';
-    });
-
-    linksWrap.addEventListener('dragleave', () => {
-        linksWrap.style.outline = '';
-    });
-
-    /* ---------- DROP ---------- */
-    linksWrap.addEventListener('drop', (e) => {
-        e.preventDefault();
-        linksWrap.style.outline = '';
-
-        let payload = null;
-        try {
-            payload = JSON.parse(e.dataTransfer.getData('application/json'));
-        } catch {
-            payload = { type: draggedType, id: draggedNodeId || draggedLinkId };
-        }
-
-        if (!payload || !payload.id) return;
-
-        /* ===== DROP FOLDER INTO FOLDER ===== */
-        if (payload.type === 'node') {
-            if (payload.id === node.id) return;
-
-            const moved = detachNodeById(currentTree, payload.id);
-            if (!moved) return;
-
-            const loc = findParentAndIndex(currentTree, node.id);
-            if (loc) {
-                const target = loc.parentArray[loc.index];
-                target.children = safeArray(target.children);
-                target.children.push(moved);
-            } else {
-                currentTree.push(moved);
-            }
-
-            setUnsaved(true);
-            renderTree(currentTree);
-            return;
-        }
-
-        /* ===== DROP LINK INTO FOLDER (append) ===== */
-        if (payload.type === 'link') {
-            if (!node.links) node.links = [];
-
-            moveLink(payload.id, node.id); // ← ВСЕГДА В КОНЕЦ ПАПКИ
-
-            setUnsaved(true);
-            renderTree(currentTree);
-            return;
-        }
-    });
 
     /* ---------- LINKS ---------- */
     const links = safeArray(node.links);
@@ -410,8 +552,34 @@ elSave.addEventListener('click', () => {
 });
 
 elCancel.addEventListener('click', () => { if (!unsaved) return; if (!confirm('Discard unsaved changes?')) return; currentTree = clone(savedTreeSnapshot); setUnsaved(false); renderTree(currentTree); });
-elExport.addEventListener('click', () => { const text = JSON.stringify(currentTree, null, 2); const blob = new Blob([text], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'linkTree.json'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); });
-elImport.addEventListener('change', (e) => { const file = e.target.files?.[0]; if (!file) return; const r = new FileReader(); r.onload = () => { try { const parsed = JSON.parse(r.result); const normalized = normalizeTree(parsed); currentTree = normalized; setUnsaved(true); renderTree(currentTree); } catch { alert('Invalid JSON'); } finally { elImport.value = ''; } }; r.readAsText(file); });
+
+elExport.addEventListener('click', () => {
+    exportTreeToTxt(currentTree);
+});
+
+elImport.addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+
+    reader.onload = () => {
+        try {
+            const text = reader.result;
+            const tree = parseTxtToTree(text);
+            currentTree = tree;
+            setUnsaved(true);
+            renderTree(currentTree);
+        } catch {
+            alert('Неверный формат TXT файла');
+        } finally {
+            elImport.value = '';
+        }
+    };
+
+    reader.readAsText(file);
+});
+
 elSort.addEventListener('click', () => { sortTreeInPlace(currentTree); setUnsaved(true); renderTree(currentTree); });
 elClean.addEventListener('click', () => { currentTree = removeEmptyFolders(currentTree); setUnsaved(true); renderTree(currentTree); });
 elUndo.addEventListener('click', () => { loadBackup(backup => { if (!backup || backup.length === 0) { alert('No backup'); return; } if (!confirm('Restore from backup? This will replace current draft.')) return; currentTree = clone(backup); savedTreeSnapshot = clone(backup); setUnsaved(true); renderTree(currentTree); }); });
