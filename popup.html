@@ -1,3 +1,4 @@
+<!-- popup.html -->
 <!DOCTYPE html>
 <html lang="ru">
 
@@ -12,9 +13,10 @@
     <div class="panel">
         <div class="head">
             <div class="title">Дерево🔗</div>
-            <div class="search" title="Поиск">
-                <input id="popupSearch" placeholder="Поиск" />
+            <div class="search" title="Поиск (Esc — очистить)">
+                <input id="popupSearch" placeholder="Поиск…" autocomplete="off" />
             </div>
+            <button id="toggleAll" class="icon-btn" title="Свернуть / Развернуть всё">⊞</button>
             <button id="openOptions" class="icon-btn" title="Настройки">⚙</button>
         </div>
         <div id="tree"></div>

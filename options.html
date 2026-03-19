@@ -1,3 +1,4 @@
+<!-- options.html -->
 <!DOCTYPE html>
 <html lang="ru">
 
@@ -15,11 +16,19 @@
                 <button id="addRoot" class="btn">+📁</button>
                 <button id="saveBtn" class="btn">Сохранить</button>
                 <button id="cancelBtn" class="btn small">Отмена</button>
-                <button id="exportBtn" class="btn small">Экспорт</button>
-                <label for="importFile" class="btn small" title="Импорт TXT">Импорт</label>
 
-<input id="importFile" type="file" accept=".txt,text/plain" style="display:none" />
-                <button id="sortBtn" class="btn small">Сортировать A→Я</button>
+                <div class="export-group">
+                    <button id="exportBtn" class="btn small">Экспорт</button>
+                    <label class="export-mode-label" title="Добавить дату к имени файла вместо перезаписи">
+                        <input type="checkbox" id="exportUnique" />
+                        уник. имя
+                    </label>
+                </div>
+
+                <label for="importFile" class="btn small" title="Импорт TXT">Импорт</label>
+                <input id="importFile" type="file" accept=".txt,text/plain" style="display:none" />
+
+                <button id="sortBtn" class="btn small">A→Я</button>
                 <button id="cleanBtn" class="btn small">Очистить пустые</button>
                 <button id="undoBtn" class="btn small">Отменить</button>
             </div>
@@ -37,7 +46,6 @@
                 <span id="unsavedIndicator" style="display:none" class="unsaved">
                     Есть несохранённые изменения
                 </span>
-                <span id="sourceIndicator" style="margin-left:8px; opacity:.8;"></span>
             </div>
         </div>
 
@@ -51,8 +59,6 @@
             </div>
         </div>
     </div>
-
-    <pre id="output" style="display:none;"></pre>
 
     <script src="options.js"></script>
 </body>

@@ -1,233 +1,338 @@
+// popup.js
 const STORAGE_KEY = 'linkTree';
 const safeArray = v => Array.isArray(v) ? v : [];
+
+/* Tracks which folder IDs are collapsed (persists during popup session) */
 const collapsed = new Set();
 
+/* Whether ALL folders are currently collapsed (for toggle button) */
+let allCollapsed = false;
+
 function getFavicon(url) {
-  try {
-    const u = new URL(url);
-    return `https://www.google.com/s2/favicons?sz=32&domain=${u.hostname}`;
-  } catch {
-    return '';
-  }
+    try {
+        const u = new URL(url);
+        return `https://www.google.com/s2/favicons?sz=32&domain=${u.hostname}`;
+    } catch {
+        return '';
+    }
 }
 
 function openLink(url) {
-  if (!url) return;
-  try { chrome.tabs.create({ url }); } catch { window.open(url, '_blank'); }
+    if (!url) return;
+    try { chrome.tabs.create({ url }); }
+    catch { window.open(url, '_blank'); }
 }
 
-/* render one folder node recursively */
+/* ─────────────────── Render ─────────────────── */
+
 function renderNode(node, container, query) {
-  if (!node) return;
+    if (!node) return;
 
-  const folder = document.createElement('div');
-  folder.className = 'folder';
+    const folder = document.createElement('div');
+    folder.className = 'folder';
 
-  // header row (clickable)
-  const row = document.createElement('div');
-  row.className = 'folder-row';
+    /* ── Folder header row ── */
+    const row = document.createElement('div');
+    row.className = 'folder-row';
 
-  // folder icon (мини-маркер)
-  const ficon = document.createElement('div');
-  ficon.className = 'folder-icon';
-  ficon.textContent = '📁';
+    const ficon = document.createElement('div');
+    ficon.className = 'folder-icon';
+    ficon.textContent = '📁';
 
-  // collapse toggle (secondary)
-  const toggle = document.createElement('button');
-  toggle.className = 'fold-toggle';
-  toggle.textContent = collapsed.has(node.id) ? '▶' : '▼';
+    const toggle = document.createElement('button');
+    toggle.className = 'fold-toggle';
+    toggle.textContent = collapsed.has(node.id) ? '▶' : '▼';
 
+    const name = document.createElement('div');
+    name.className = 'fold-name';
+    name.textContent = node.title || 'Без названия';
 
-  // name container (click on it or on row toggles)
-  const name = document.createElement('div');
-  name.className = 'fold-name';
-  name.textContent = node.title || 'Без названия';
-
-  // clicking row toggles collapse (except clicks on child interactive elements)
-  row.addEventListener('click', (e) => {
-    // If click came from a link action (we stopPropagation there), this won't run.
-    if (collapsed.has(node.id)) collapsed.delete(node.id);
-    else collapsed.add(node.id);
-    renderTree(currentTree, currentQuery);
-  });
-
-  // assemble header: icon, toggle, name
-  // Put icon first so user sees folder marker
-  row.appendChild(ficon);
-  row.appendChild(toggle);
-  row.appendChild(name);
-  folder.appendChild(row);
-
-  // children wrapper (links + subfolders)
-  const childrenWrap = document.createElement('div');
-  childrenWrap.className = 'links';
-  if (collapsed.has(node.id)) childrenWrap.style.display = 'none';
-
-  // links
-  safeArray(node.links).forEach(link => {
-    if (!link || (!link.url && !link.title)) return;
-
-    // search filter
-    if (query) {
-      const q = query.toLowerCase();
-      if (!((link.title || '').toLowerCase().includes(q) || (link.url || '').toLowerCase().includes(q))) {
-        return;
-      }
+    /* Link count badge (direct links only) */
+    const linkCount = safeArray(node.links).filter(l => l.url || l.title).length;
+    if (linkCount > 0) {
+        const badge = document.createElement('span');
+        badge.className = 'count-badge';
+        badge.textContent = linkCount;
+        name.appendChild(badge);
     }
 
-    const linkEl = document.createElement('div');
-    linkEl.className = 'link';
-    // click on whole row opens link
-    linkEl.addEventListener('click', () => openLink(link.url));
-    // ensure clicks on actions don't bubble to linkEl
-    linkEl.addEventListener('auxclick', (e) => e.stopPropagation());
-
-    const fav = document.createElement('img');
-    fav.className = 'favicon';
-    const favUrl = getFavicon(link.url);
-    if (favUrl) {
-      fav.src = favUrl;
-      // hide image on error
-      fav.addEventListener('error', () => fav.remove());
-    } else {
-      fav.remove(); // no favicon available
-    }
-
-    const content = document.createElement('div');
-    content.className = 'link-content';
-    const title = document.createElement('div');
-    title.className = 'link-title';
-    title.textContent = link.title || link.url || '—';
-    const sub = document.createElement('div');
-    sub.className = 'link-sub';
-    sub.textContent = link.url || '';
-    content.appendChild(title);
-    content.appendChild(sub);
-
-    const actions = document.createElement('div');
-    actions.className = 'link-actions';
-
-    // copy button — stop propagation so row click doesn't trigger
-    const copy = document.createElement('button');
-    copy.className = 'small-btn';
-    copy.textContent = '⧉';
-    copy.title = 'Копировать URL';
-    copy.addEventListener('click', (e) => {
-      e.stopPropagation();
-      try { navigator.clipboard.writeText(link.url || ''); } catch {
-        const ta = document.createElement('textarea');
-        ta.value = link.url || '';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        ta.remove();
-      }
+    /* "Open all links" button (visible on hover via CSS) */
+    const openAllBtn = document.createElement('button');
+    openAllBtn.className = 'open-all-btn';
+    openAllBtn.textContent = '⤴⤴';
+    openAllBtn.title = 'Открыть все ссылки папки';
+    openAllBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        const links = safeArray(node.links).filter(l => l.url);
+        if (links.length === 0) { alert('В папке нет ссылок с URL.'); return; }
+        if (links.length > 6 && !confirm(`Открыть ${links.length} вкладок?`)) return;
+        links.forEach(l => openLink(l.url));
     });
 
-    // open icon button (optional, duplicates row click) — stop propagation then open
-    const openBtn = document.createElement('button');
-    openBtn.className = 'small-btn';
-    openBtn.textContent = '⤴';
-    openBtn.title = 'Открыть';
-    openBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      openLink(link.url);
+    /* Toggle collapse on row click */
+    row.addEventListener('click', () => {
+        if (collapsed.has(node.id)) collapsed.delete(node.id);
+        else collapsed.add(node.id);
+        renderTree(currentTree, currentQuery);
     });
 
-    actions.appendChild(openBtn);
-    actions.appendChild(copy);
+    row.append(ficon, toggle, name, openAllBtn);
+    folder.appendChild(row);
 
-    // append elements (favicon may be removed)
-    if (fav && fav.parentElement === null && fav.src) linkEl.appendChild(fav);
-    linkEl.appendChild(content);
-    linkEl.appendChild(actions);
+    /* ── Children wrapper ── */
+    const childrenWrap = document.createElement('div');
+    childrenWrap.className = 'links';
+    if (collapsed.has(node.id)) childrenWrap.style.display = 'none';
 
-    childrenWrap.appendChild(linkEl);
-  });
+    /* ── Links ── */
+    safeArray(node.links).forEach(link => {
+        if (!link || (!link.url && !link.title)) return;
 
-  // subfolders (recursion)
-  safeArray(node.children).forEach(child => {
-    renderNode(child, childrenWrap, query);
-  });
+        if (query) {
+            const q = query.toLowerCase();
+            if (!((link.title || '').toLowerCase().includes(q) || (link.url || '').toLowerCase().includes(q))) {
+                return;
+            }
+        }
 
-  folder.appendChild(childrenWrap);
-  container.appendChild(folder);
+        const linkEl = document.createElement('div');
+        linkEl.className = 'link';
+        linkEl.tabIndex = -1; // focusable but not in tab order (we manage focus manually)
+        linkEl.addEventListener('click', () => openLink(link.url));
+
+        /* Favicon */
+        const favUrl = getFavicon(link.url);
+        if (favUrl) {
+            const fav = document.createElement('img');
+            fav.className = 'favicon';
+            fav.src = favUrl;
+            fav.alt = '';
+            fav.addEventListener('error', () => fav.remove());
+            linkEl.appendChild(fav);
+        }
+
+        /* Title + URL */
+        const content = document.createElement('div');
+        content.className = 'link-content';
+
+        const titleEl = document.createElement('div');
+        titleEl.className = 'link-title';
+        titleEl.textContent = link.title || link.url || '—';
+
+        const subEl = document.createElement('div');
+        subEl.className = 'link-sub';
+        subEl.textContent = link.url || '';
+
+        content.append(titleEl, subEl);
+
+        /* Action buttons */
+        const actions = document.createElement('div');
+        actions.className = 'link-actions';
+
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'small-btn';
+        copyBtn.textContent = '⧉';
+        copyBtn.title = 'Копировать URL';
+        copyBtn.addEventListener('click', e => {
+            e.stopPropagation();
+            const text = link.url || '';
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+            } else {
+                fallbackCopy(text);
+            }
+        });
+
+        const openBtn = document.createElement('button');
+        openBtn.className = 'small-btn';
+        openBtn.textContent = '⤴';
+        openBtn.title = 'Открыть';
+        openBtn.addEventListener('click', e => {
+            e.stopPropagation();
+            openLink(link.url);
+        });
+
+        actions.append(openBtn, copyBtn);
+        linkEl.append(content, actions);
+        childrenWrap.appendChild(linkEl);
+    });
+
+    /* ── Sub-folders (recursive) ── */
+    safeArray(node.children).forEach(child => renderNode(child, childrenWrap, query));
+
+    folder.appendChild(childrenWrap);
+    container.appendChild(folder);
 }
+
+function fallbackCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch {}
+    ta.remove();
+}
+
+/* ─────────────────── Tree state ─────────────────── */
 
 let currentTree = [];
 let currentQuery = '';
 
 function renderTree(tree, query = '') {
-  currentTree = Array.isArray(tree) ? tree : [];
-  currentQuery = query || '';
-  const root = document.getElementById('tree');
-  root.innerHTML = '';
+    currentTree = Array.isArray(tree) ? tree : [];
+    currentQuery = query || '';
 
-  if (currentTree.length === 0) {
-    root.innerHTML = `<div class="empty">Нет сохранённых ссылок</div>`;
-    return;
-  }
+    const root = document.getElementById('tree');
+    root.innerHTML = '';
+    resetNav();
 
-  safeArray(currentTree).forEach(n => {
-    // if searching — skip root nodes without matches
-    if (currentQuery) {
-      const q = currentQuery.toLowerCase();
-      const nodeMatches = (node) => {
-        if (!node) return false;
-        if ((node.title || '').toLowerCase().includes(q)) return true;
-        if (safeArray(node.links).some(l => (((l?.title||'') + ' ' + (l?.url||'')).toLowerCase().includes(q)))) return true;
-        return safeArray(node.children).some(c => nodeMatches(c));
-      };
-      if (!nodeMatches(n)) return;
+    if (currentTree.length === 0) {
+        root.innerHTML = '<div class="empty">Нет сохранённых ссылок</div>';
+        return;
     }
-    renderNode(n, root, currentQuery);
-  });
+
+    safeArray(currentTree).forEach(n => {
+        if (currentQuery) {
+            if (!nodeMatchesQuery(n, currentQuery)) return;
+        }
+        renderNode(n, root, currentQuery);
+    });
+}
+
+function nodeMatchesQuery(node, query) {
+    if (!node) return false;
+    const q = query.toLowerCase();
+    if ((node.title || '').toLowerCase().includes(q)) return true;
+    if (safeArray(node.links).some(l => (((l?.title || '') + ' ' + (l?.url || '')).toLowerCase().includes(q)))) return true;
+    return safeArray(node.children).some(c => nodeMatchesQuery(c, q));
 }
 
 async function loadAndRender(query = '') {
-  const res = await chrome.storage.local.get(STORAGE_KEY);
-  const tree = Array.isArray(res[STORAGE_KEY]) ? res[STORAGE_KEY] : [];
-  renderTree(tree, query);
+    const res = await chrome.storage.local.get(STORAGE_KEY);
+    const tree = Array.isArray(res[STORAGE_KEY]) ? res[STORAGE_KEY] : [];
+    renderTree(tree, query);
 }
 
-/* wiring */
+/* ─────────────────── Keyboard navigation ─────────────────── */
+
+let navIndex = -1;
+let navItems = [];
+
+function updateNavItems() {
+    // Collect all visible .link elements (hidden ones are inside display:none parents)
+    navItems = Array.from(document.querySelectorAll('#tree .link')).filter(el => el.offsetParent !== null);
+}
+
+function setNavFocus(index) {
+    navItems.forEach(el => el.classList.remove('kb-focused'));
+
+    if (navItems.length === 0) { navIndex = -1; return; }
+
+    // Wrap around
+    if (index < 0) index = navItems.length - 1;
+    if (index >= navItems.length) index = 0;
+
+    navIndex = index;
+    navItems[navIndex].classList.add('kb-focused');
+    navItems[navIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+function resetNav() {
+    navIndex = -1;
+    navItems = [];
+}
+
+/* ─────────────────── Controls ─────────────────── */
+
 document.getElementById('openOptions').addEventListener('click', () => {
-  try { chrome.runtime.openOptionsPage(); } catch { window.open('options.html', '_blank'); }
+    try { chrome.runtime.openOptionsPage(); }
+    catch { window.open('options.html', '_blank'); }
 });
 
-const searchEl = document.getElementById('popupSearch');
-let timer = null;
-searchEl.addEventListener('input', () => {
-  clearTimeout(timer);
-  timer = setTimeout(() => loadAndRender(searchEl.value.trim()), 200);
-});
-
-// initial load
-loadAndRender();
-
-// hotkeys (popup only)
-document.addEventListener('keydown', (e) => {
-  // Ctrl + Q / Cmd + Q → фокус в поиск
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'q') {
-    e.preventDefault();
-    searchEl.focus();
-    searchEl.select();
-    return;
-  }
-
-  // Esc → очистить поиск и вернуть дерево
-  if (e.key === 'Escape') {
-    if (document.activeElement === searchEl) {
-      searchEl.value = '';
-      searchEl.blur();
-      loadAndRender('');
+/* Expand / Collapse all toggle */
+document.getElementById('toggleAll').addEventListener('click', () => {
+    if (allCollapsed) {
+        collapsed.clear();
+        allCollapsed = false;
+    } else {
+        // Collect all folder IDs in current tree
+        function collectIds(nodes) {
+            safeArray(nodes).forEach(n => {
+                if (!n) return;
+                collapsed.add(n.id);
+                collectIds(n.children);
+            });
+        }
+        collectIds(currentTree);
+        allCollapsed = true;
     }
-  }
+    renderTree(currentTree, currentQuery);
 });
+
+/* Search input */
+const searchEl = document.getElementById('popupSearch');
+let searchTimer = null;
+
+searchEl.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => loadAndRender(searchEl.value.trim()), 200);
+});
+
+/* ─────────────────── Keyboard shortcuts ─────────────────── */
+
+document.addEventListener('keydown', e => {
+    const inSearch = document.activeElement === searchEl;
+
+    /* ArrowDown / ArrowUp — navigate through links */
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+
+        // Blur search so text cursor doesn't interfere
+        if (inSearch) searchEl.blur();
+
+        updateNavItems();
+        if (navItems.length === 0) return;
+
+        setNavFocus(e.key === 'ArrowDown' ? navIndex + 1 : navIndex - 1);
+        return;
+    }
+
+    /* Enter — open focused link */
+    if (e.key === 'Enter' && !inSearch) {
+        if (navIndex >= 0 && navItems[navIndex]) {
+            e.preventDefault();
+            navItems[navIndex].click();
+        }
+        return;
+    }
+
+    /* Ctrl/Cmd + Q — focus search */
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'q') {
+        e.preventDefault();
+        searchEl.focus();
+        searchEl.select();
+        return;
+    }
+
+    /* Escape — clear search or blur */
+    if (e.key === 'Escape') {
+        if (inSearch) {
+            searchEl.value = '';
+            searchEl.blur();
+            loadAndRender('');
+        } else {
+            // Clear keyboard nav highlight
+            navItems.forEach(el => el.classList.remove('kb-focused'));
+            navIndex = -1;
+        }
+    }
+});
+
+/* ─────────────────── Boot ─────────────────── */
 
 window.addEventListener('load', () => {
-  searchEl.value = '';
-  loadAndRender('');
-  searchEl.focus();
-  searchEl.select();
+    searchEl.value = '';
+    loadAndRender('');
+    searchEl.focus();
+    searchEl.select();
 });

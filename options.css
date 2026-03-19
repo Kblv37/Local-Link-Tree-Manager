@@ -1,3 +1,4 @@
+/* options.css */
 :root {
     --bg: #f6f7fb;
     --card: #fff;
@@ -39,8 +40,44 @@ body {
     display: flex;
     gap: 8px;
     align-items: center;
+    flex-wrap: wrap;
 }
 
+/* --- Export group: button + checkbox side-by-side --- */
+.export-group {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 3px 8px 3px 3px;
+}
+
+.export-group #exportBtn {
+    border: none;
+    background: transparent;
+    padding: 4px 6px;
+    box-shadow: none;
+}
+
+.export-mode-label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--muted);
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+
+.export-mode-label input[type="checkbox"] {
+    cursor: pointer;
+    accent-color: var(--accent);
+}
+
+/* --- Buttons --- */
 .btn {
     background: var(--card);
     border: 1px solid var(--border);
@@ -61,9 +98,10 @@ body {
 
 .small {
     padding: 6px 8px;
-    font-size: 12px
+    font-size: 12px;
 }
 
+/* --- Search --- */
 .search {
     flex: 1;
     display: flex;
@@ -72,37 +110,38 @@ body {
     background: var(--card);
     border-radius: 8px;
     padding: 6px 8px;
-    border: 1px solid var(--border)
+    border: 1px solid var(--border);
 }
 
 .search input {
     border: 0;
     outline: 0;
-    width: 200px
+    width: 200px;
 }
 
 .meta {
     color: var(--muted);
     font-size: 12px;
-    margin-left: auto
+    margin-left: auto;
 }
 
+/* --- Panel / Tree --- */
 .panel {
     background: var(--card);
     border-radius: 12px;
     padding: 12px;
-    border: 1px solid var(--border)
+    border: 1px solid var(--border);
 }
 
 #tree {
-    margin-top: 8px
+    margin-top: 8px;
 }
 
 .folder {
     margin-left: 8px;
     border-left: 1px dashed var(--border);
     padding-left: 10px;
-    margin-top: 6px
+    margin-top: 6px;
 }
 
 .node-row {
@@ -110,19 +149,19 @@ body {
     gap: 6px;
     align-items: center;
     padding: 4px;
-    border-radius: 8px
+    border-radius: 8px;
 }
 
 .node-row .title-input {
     flex: 1;
     padding: 6px 8px;
     border: 1px solid var(--border);
-    border-radius: 8px
+    border-radius: 8px;
 }
 
 .node-actions {
     display: flex;
-    gap: 6px
+    gap: 6px;
 }
 
 .icon {
@@ -131,66 +170,67 @@ body {
     display: inline-grid;
     place-items: center;
     font-size: 12px;
-    color: var(--muted)
+    color: var(--muted);
 }
 
 .links {
-    margin-left: 26px;
+    margin-left: 36px;
     margin-top: 6px;
     display: flex;
     flex-direction: column;
-    gap: 6px
+    gap: 6px;
 }
 
 .link-row {
     display: flex;
     gap: 6px;
-    align-items: center
+    align-items: center;
+    padding-left: 8px;
 }
 
 .link-row input {
     padding: 6px 8px;
     border-radius: 8px;
-    border: 1px solid var(--border)
+    border: 1px solid var(--border);
 }
 
 .link-actions {
     display: flex;
-    gap: 6px
+    gap: 6px;
 }
 
 .status {
     display: flex;
     gap: 8px;
     align-items: center;
-    margin-top: 10px
+    margin-top: 10px;
 }
 
 .unsaved {
     color: #b45309;
-    font-weight: 600
+    font-weight: 600;
 }
 
 .footer {
     margin-top: 12px;
     color: var(--muted);
-    font-size: 12px
+    font-size: 12px;
 }
 
-/* compact spacing for dense UI */
+/* compact spacing */
 .compact .node-row {
-    padding: 3px
+    padding: 3px;
 }
 
 .compact .links {
-    gap: 4px
+    gap: 4px;
 }
 
 .compact .link-row input {
-    padding: 5px
+    padding: 5px;
 }
 
-/* --- Drag handle (ролер) --- */
+/* --- Drag handle --- */
 .drag-handle {
     width: 20px;
     height: 20px;
@@ -201,16 +241,14 @@ body {
     border: 1px dashed var(--border);
     color: var(--muted);
     cursor: grab;
-    /* пользователь понимает, что можно тянуть */
     flex: 0 0 20px;
 }
 
-/* while dragging */
 .drag-handle:active {
     cursor: grabbing;
 }
 
-/* --- визуальный индикатор вставки (before / after) --- */
+/* --- Drop indicators --- */
 .node-row.drop-before {
     box-shadow: inset 0 6px 0 rgba(37, 99, 235, 0.12);
 }
@@ -219,20 +257,15 @@ body {
     box-shadow: inset 0 -6px 0 rgba(37, 99, 235, 0.12);
 }
 
-/* --- Links indentation — сделать более выраженным отступ (табуляция) --- */
-.links {
-    margin-left: 36px;
-    margin-top: 6px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-
-/* в каждой строке ссылки пусть будет маленький внутренний отступ — выглядит как табуляция */
-.link-row {
-    padding-left: 8px;
-}
-
+/* --- Invalid URL --- */
 .link-url.invalid {
     border-color: #ef4444;
+}
+
+/* --- Empty state --- */
+.empty {
+    padding: 24px;
+    text-align: center;
+    color: var(--muted);
+    font-style: italic;
 }
