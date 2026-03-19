@@ -1,32 +1,22 @@
 <!DOCTYPE html>
 <html lang="ru">
-
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Дерево ссылок — Настройки</title>
+    <title>LLT — Настройки</title>
     <link rel="stylesheet" href="options.css">
 </head>
-
 <body>
     <div class="container">
-
-        <!-- ── Page header ── -->
         <div class="page-header">
-            <div class="page-title">🔗 Link Tree Manager</div>
+            <div class="page-title">Local Link Tree Manager</div>
         </div>
-
-        <!-- ── Toolbar ── -->
         <div class="topbar">
             <div class="controls">
-                <!-- Tree actions -->
                 <button id="addRoot" class="btn">+ Папка</button>
                 <button id="saveBtn" class="btn btn-primary">💾 Сохранить</button>
                 <button id="cancelBtn" class="btn small">Отмена</button>
-
                 <div class="btn-divider"></div>
-
-                <!-- Export -->
                 <div class="export-group">
                     <button id="exportBtn" class="btn small">📤 Экспорт</button>
                     <label class="export-mode-label" title="Добавить дату к имени файла — не перезаписывать">
@@ -34,19 +24,12 @@
                         уник. имя
                     </label>
                 </div>
-
-                <!-- Import -->
                 <label for="importFile" class="btn small" title="Импорт дерева из TXT">📥 Импорт</label>
                 <input id="importFile" type="file" accept=".txt,text/plain" style="display:none" />
-
                 <div class="btn-divider"></div>
-
-                <!-- Utility -->
                 <button id="cleanBtn" class="btn small">🧹 Очистить пустые</button>
                 <button id="undoBtn"  class="btn small">↩ Отменить</button>
             </div>
-
-            <!-- Search -->
             <div class="search" role="search">
                 <svg width="14" height="14" viewBox="0 0 24 24" style="opacity:.5;flex-shrink:0">
                     <circle cx="11" cy="11" r="6" stroke="currentColor" stroke-width="2" fill="none"/>
@@ -55,16 +38,12 @@
                 <input id="search" placeholder="Поиск (Enter)" />
                 <button id="clearSearch" class="btn small" style="padding:2px 6px;font-size:11px">✕</button>
             </div>
-
-            <!-- Unsaved indicator -->
             <div class="meta">
                 <span id="unsavedIndicator" style="display:none" class="unsaved">
                     ⚠ Есть несохранённые изменения
                 </span>
             </div>
         </div>
-
-        <!-- ── Tree panel ── -->
         <div class="panel compact" id="treePanel">
             <div class="panel-title">Дерево ссылок</div>
             <div id="tree" aria-live="polite"></div>
@@ -72,13 +51,9 @@
                 <span class="footer-text">Данные хранятся локально. Нажмите «Сохранить» для применения изменений.</span>
             </div>
         </div>
-
-        <!-- ── Settings panel ── -->
         <div class="panel" id="settingsPanel">
             <div class="panel-title">⚙ Настройки</div>
-
             <div class="settings-grid">
-
                 <div class="setting-item">
                     <div class="setting-label">
                         <span class="setting-name">🌙 Тёмная тема</span>
@@ -89,7 +64,6 @@
                         <span class="toggle-slider"></span>
                     </label>
                 </div>
-
                 <div class="setting-item">
                     <div class="setting-label">
                         <span class="setting-name">⬛ Компактный режим</span>
@@ -100,7 +74,6 @@
                         <span class="toggle-slider"></span>
                     </label>
                 </div>
-
                 <div class="setting-item">
                     <div class="setting-label">
                         <span class="setting-name">💾 Автосохранение</span>
@@ -111,32 +84,24 @@
                         <span class="toggle-slider"></span>
                     </label>
                 </div>
-
             </div>
-
-            <!-- Settings export / import -->
             <div class="settings-actions">
                 <button id="exportSettings" class="btn small">📤 Экспорт настроек</button>
                 <label for="importSettings" class="btn small">📥 Импорт настроек</label>
                 <input id="importSettings" type="file" accept=".txt,text/plain" style="display:none" />
             </div>
         </div>
-
-        <!-- ── Documentation ── -->
         <div class="docs-section" id="docsPanel">
             <div class="panel-title">📖 Документация</div>
-
             <div class="docs-grid">
-
                 <div class="docs-card">
-                    <div class="docs-card-title">🔗 О расширении</div>
+                    <div class="docs-card-title">О расширении</div>
                     <ul>
                         <li>Локальный менеджер ссылок в виде дерева</li>
                         <li>Папки могут вкладываться друг в друга</li>
                         <li>Данные хранятся только на вашем устройстве</li>
                     </ul>
                 </div>
-
                 <div class="docs-card">
                     <div class="docs-card-title">🖱 Popup</div>
                     <ul>
@@ -147,7 +112,6 @@
                         <li>⊞ — свернуть / развернуть всё</li>
                     </ul>
                 </div>
-
                 <div class="docs-card">
                     <div class="docs-card-title">⌨ Горячие клавиши</div>
                     <ul>
@@ -155,10 +119,9 @@
                         <li><kbd>↑</kbd> <kbd>↓</kbd> — навигация по ссылкам</li>
                         <li><kbd>Enter</kbd> — открыть выбранную ссылку</li>
                         <li><kbd>Esc</kbd> — очистить поиск / снять выделение</li>
-                        <li><kbd>Ctrl+S</kbd> — сохранить дерево</li>
+                        <li><kbd>Alt+S</kbd> — сохранить дерево</li>
                     </ul>
                 </div>
-
                 <div class="docs-card">
                     <div class="docs-card-title">📤 Экспорт / Импорт</div>
                     <ul>
@@ -168,7 +131,6 @@
                         <li>Настройки экспортируются отдельно</li>
                     </ul>
                 </div>
-
                 <div class="docs-card">
                     <div class="docs-card-title">🛠 Редактор дерева</div>
                     <ul>
@@ -179,13 +141,9 @@
                         <li>↩ Отменить — восстановить из резервной копии</li>
                     </ul>
                 </div>
-
             </div>
         </div>
-
-    </div><!-- /container -->
-
+    </div>
     <script src="options.js"></script>
 </body>
-
 </html>

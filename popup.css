@@ -1,4 +1,3 @@
-/* ════════════════ CSS Variables ════════════════ */
 :root {
   --bg:         #ffffff;
   --surface:    #ffffff;
@@ -11,7 +10,6 @@
   --hover:      #f3f4f6;
   --radius:     10px;
 }
-
 [data-theme="dark"] {
   --bg:         #0f1117;
   --surface:    #1a1d27;
@@ -23,10 +21,7 @@
   --accent:     #4f8ef7;
   --hover:      #22273a;
 }
-
-/* ════════════════ Base ════════════════ */
 *, *::before, *::after { box-sizing: border-box; }
-
 body {
   margin: 0;
   padding: 6px;
@@ -39,30 +34,23 @@ body {
   background: var(--bg);
   transition: background 0.18s, color 0.18s;
 }
-
-/* ════════════════ Panel ════════════════ */
 .panel {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 6px;
   background: var(--surface);
 }
-
-/* ════════════════ Header ════════════════ */
 .head {
   display: flex;
   align-items: center;
   gap: 5px;
   margin-bottom: 5px;
 }
-
 .title {
   font-weight: 700;
   font-size: 13px;
   flex-shrink: 0;
 }
-
-/* Search box */
 .search {
   display: flex;
   align-items: center;
@@ -74,7 +62,6 @@ body {
   background: var(--hover);
   min-width: 0;
 }
-
 .search input {
   border: 0;
   outline: 0;
@@ -83,10 +70,7 @@ body {
   background: transparent;
   color: var(--text);
 }
-
 .search input::placeholder { color: var(--muted2); }
-
-/* Icon buttons */
 .icon-btn {
   border: 0;
   background: transparent;
@@ -98,20 +82,16 @@ body {
   line-height: 1;
   flex-shrink: 0;
 }
-
 .icon-btn:hover {
   background: var(--hover);
   color: var(--accent);
 }
-
-/* ════════════════ Tree ════════════════ */
 .folder {
   margin-left: 6px;
   border-left: 1px dashed var(--border);
   padding-left: 6px;
   margin-top: 2px;
 }
-
 .folder-row {
   display: flex;
   align-items: center;
@@ -120,15 +100,12 @@ body {
   cursor: pointer;
   border-radius: 6px;
 }
-
 .folder-row:hover { background: var(--hover); }
-
 .folder-icon {
   font-size: 12px;
   flex-shrink: 0;
   line-height: 1;
 }
-
 .fold-toggle {
   width: 16px;
   height: 16px;
@@ -142,7 +119,6 @@ body {
   cursor: default;
   flex-shrink: 0;
 }
-
 .fold-name {
   font-weight: 600;
   font-size: 12.5px;
@@ -152,8 +128,6 @@ body {
   flex: 1;
   min-width: 0;
 }
-
-/* Count badge */
 .count-badge {
   display: inline-block;
   font-size: 10px;
@@ -167,8 +141,6 @@ body {
   flex-shrink: 0;
   margin-left: 3px;
 }
-
-/* Open-all button */
 .open-all-btn {
   border: 0;
   background: transparent;
@@ -182,11 +154,8 @@ body {
   opacity: 0;
   transition: opacity 0.12s;
 }
-
 .folder-row:hover .open-all-btn { opacity: 1; }
 .open-all-btn:hover { color: var(--accent); background: var(--hover); }
-
-/* ════════════════ Links ════════════════ */
 .links {
   margin-left: 20px;
   margin-top: 1px;
@@ -194,7 +163,6 @@ body {
   flex-direction: column;
   gap: 1px;
 }
-
 .link {
   display: flex;
   align-items: center;
@@ -204,23 +172,18 @@ body {
   cursor: pointer;
   outline: none;
 }
-
 .link:hover { background: var(--hover); }
-
-/* Keyboard nav highlight */
 .link.kb-focused {
   background: var(--hover);
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
-
 .favicon {
   width: 14px;
   height: 14px;
   border-radius: 3px;
   flex-shrink: 0;
 }
-
 .link-content {
   flex: 1;
   min-width: 0;
@@ -228,7 +191,6 @@ body {
   flex-direction: column;
   gap: 0px;
 }
-
 .link-title {
   font-size: 12px;
   font-weight: 500;
@@ -237,7 +199,6 @@ body {
   text-overflow: ellipsis;
   color: var(--text);
 }
-
 .link-sub {
   font-size: 10.5px;
   color: var(--muted);
@@ -245,8 +206,6 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-/* Action buttons (visible on hover) */
 .link-actions {
   display: flex;
   gap: 2px;
@@ -254,10 +213,8 @@ body {
   opacity: 0;
   transition: opacity 0.12s;
 }
-
 .link:hover .link-actions,
 .link.kb-focused .link-actions { opacity: 1; }
-
 .small-btn {
   border: 0;
   background: transparent;
@@ -267,10 +224,7 @@ body {
   border-radius: 4px;
   font-size: 11px;
 }
-
 .small-btn:hover { color: var(--accent); background: var(--hover); }
-
-/* ════════════════ Empty state ════════════════ */
 .empty {
   padding: 14px;
   text-align: center;

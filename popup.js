@@ -328,7 +328,6 @@ document.addEventListener('keydown', e => {
 window.addEventListener('load', () => {
     searchEl.value = '';
 
-    // Load settings (theme etc.), collapsed state, then tree
     loadAndApplySettings(() => {
         loadCollapsed(() => {
             loadAndRender('');

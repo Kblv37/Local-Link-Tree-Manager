@@ -619,7 +619,7 @@ $('importSettings').addEventListener('change', e => {
 
 /* ─── Global keyboard shortcuts ─── */
 window.addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+    if (e.altKey && e.key.toLowerCase() === 's') {
         e.preventDefault();
         $('saveBtn').click();
     } else if (e.key === 'Escape' && unsaved) {
