@@ -1,20 +1,45 @@
-// popup.js
-const STORAGE_KEY = 'linkTree';
+/* ════════════════════════════════════════════════════
+   popup.js — Link Tree Manager v1.4
+   ════════════════════════════════════════════════════ */
+
+const STORAGE_KEY    = 'linkTree';
+const SETTINGS_KEY   = 'appSettings';
+const COLLAPSE_KEY   = 'popupCollapsed';   // persisted collapsed folder IDs
+
 const safeArray = v => Array.isArray(v) ? v : [];
 
-/* Tracks which folder IDs are collapsed (persists during popup session) */
+/* Collapsed state — loaded from storage, updated on toggle */
 const collapsed = new Set();
-
-/* Whether ALL folders are currently collapsed (for toggle button) */
 let allCollapsed = false;
 
+/* ─── Settings ─── */
+function loadAndApplySettings(cb) {
+    chrome.storage.local.get([SETTINGS_KEY], res => {
+        const s = { theme: 'light', compactMode: false, ...((res?.[SETTINGS_KEY]) || {}) };
+        document.documentElement.setAttribute('data-theme', s.theme === 'dark' ? 'dark' : 'light');
+        cb && cb();
+    });
+}
+
+/* ─── Collapsed state persistence ─── */
+function saveCollapsed() {
+    chrome.storage.local.set({ [COLLAPSE_KEY]: [...collapsed] });
+}
+
+function loadCollapsed(cb) {
+    chrome.storage.local.get([COLLAPSE_KEY], res => {
+        const ids = res?.[COLLAPSE_KEY];
+        if (Array.isArray(ids)) ids.forEach(id => collapsed.add(id));
+        cb && cb();
+    });
+}
+
+/* ─── Helpers ─── */
 function getFavicon(url) {
     try {
         const u = new URL(url);
         return `https://www.google.com/s2/favicons?sz=32&domain=${u.hostname}`;
-    } catch {
-        return '';
-    }
+    } catch { return ''; }
 }
 
 function openLink(url) {
@@ -23,15 +48,23 @@ function openLink(url) {
     catch { window.open(url, '_blank'); }
 }
 
-/* ─────────────────── Render ─────────────────── */
+function fallbackCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch {}
+    ta.remove();
+}
 
+/* ─── Render ─── */
 function renderNode(node, container, query) {
     if (!node) return;
 
     const folder = document.createElement('div');
     folder.className = 'folder';
 
-    /* ── Folder header row ── */
+    /* Folder header */
     const row = document.createElement('div');
     row.className = 'folder-row';
 
@@ -47,7 +80,7 @@ function renderNode(node, container, query) {
     name.className = 'fold-name';
     name.textContent = node.title || 'Без названия';
 
-    /* Link count badge (direct links only) */
+    /* Link count badge */
     const linkCount = safeArray(node.links).filter(l => l.url || l.title).length;
     if (linkCount > 0) {
         const badge = document.createElement('span');
@@ -56,7 +89,7 @@ function renderNode(node, container, query) {
         name.appendChild(badge);
     }
 
-    /* "Open all links" button (visible on hover via CSS) */
+    /* Open-all button */
     const openAllBtn = document.createElement('button');
     openAllBtn.className = 'open-all-btn';
     openAllBtn.textContent = '⤴⤴';
@@ -69,35 +102,33 @@ function renderNode(node, container, query) {
         links.forEach(l => openLink(l.url));
     });
 
-    /* Toggle collapse on row click */
     row.addEventListener('click', () => {
         if (collapsed.has(node.id)) collapsed.delete(node.id);
         else collapsed.add(node.id);
+        saveCollapsed();
         renderTree(currentTree, currentQuery);
     });
 
     row.append(ficon, toggle, name, openAllBtn);
     folder.appendChild(row);
 
-    /* ── Children wrapper ── */
+    /* Children wrapper */
     const childrenWrap = document.createElement('div');
     childrenWrap.className = 'links';
     if (collapsed.has(node.id)) childrenWrap.style.display = 'none';
 
-    /* ── Links ── */
+    /* Links */
     safeArray(node.links).forEach(link => {
         if (!link || (!link.url && !link.title)) return;
 
         if (query) {
             const q = query.toLowerCase();
-            if (!((link.title || '').toLowerCase().includes(q) || (link.url || '').toLowerCase().includes(q))) {
-                return;
-            }
+            if (!((link.title || '').toLowerCase().includes(q) || (link.url || '').toLowerCase().includes(q))) return;
         }
 
         const linkEl = document.createElement('div');
         linkEl.className = 'link';
-        linkEl.tabIndex = -1; // focusable but not in tab order (we manage focus manually)
+        linkEl.tabIndex = -1;
         linkEl.addEventListener('click', () => openLink(link.url));
 
         /* Favicon */
@@ -125,9 +156,15 @@ function renderNode(node, container, query) {
 
         content.append(titleEl, subEl);
 
-        /* Action buttons */
+        /* Actions */
         const actions = document.createElement('div');
         actions.className = 'link-actions';
+
+        const openBtn = document.createElement('button');
+        openBtn.className = 'small-btn';
+        openBtn.textContent = '⤴';
+        openBtn.title = 'Открыть';
+        openBtn.addEventListener('click', e => { e.stopPropagation(); openLink(link.url); });
 
         const copyBtn = document.createElement('button');
         copyBtn.className = 'small-btn';
@@ -136,20 +173,8 @@ function renderNode(node, container, query) {
         copyBtn.addEventListener('click', e => {
             e.stopPropagation();
             const text = link.url || '';
-            if (navigator.clipboard) {
-                navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
-            } else {
-                fallbackCopy(text);
-            }
-        });
-
-        const openBtn = document.createElement('button');
-        openBtn.className = 'small-btn';
-        openBtn.textContent = '⤴';
-        openBtn.title = 'Открыть';
-        openBtn.addEventListener('click', e => {
-            e.stopPropagation();
-            openLink(link.url);
+            if (navigator.clipboard) navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+            else fallbackCopy(text);
         });
 
         actions.append(openBtn, copyBtn);
@@ -157,29 +182,27 @@ function renderNode(node, container, query) {
         childrenWrap.appendChild(linkEl);
     });
 
-    /* ── Sub-folders (recursive) ── */
+    /* Sub-folders */
     safeArray(node.children).forEach(child => renderNode(child, childrenWrap, query));
 
     folder.appendChild(childrenWrap);
     container.appendChild(folder);
 }
 
-function fallbackCopy(text) {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    document.body.appendChild(ta);
-    ta.select();
-    try { document.execCommand('copy'); } catch {}
-    ta.remove();
-}
-
-/* ─────────────────── Tree state ─────────────────── */
-
-let currentTree = [];
+/* ─── Tree state ─── */
+let currentTree  = [];
 let currentQuery = '';
 
+function nodeMatchesQuery(node, query) {
+    if (!node) return false;
+    const q = query.toLowerCase();
+    if ((node.title || '').toLowerCase().includes(q)) return true;
+    if (safeArray(node.links).some(l => (((l?.title || '') + ' ' + (l?.url || '')).toLowerCase().includes(q)))) return true;
+    return safeArray(node.children).some(c => nodeMatchesQuery(c, q));
+}
+
 function renderTree(tree, query = '') {
-    currentTree = Array.isArray(tree) ? tree : [];
+    currentTree  = Array.isArray(tree) ? tree : [];
     currentQuery = query || '';
 
     const root = document.getElementById('tree');
@@ -192,46 +215,30 @@ function renderTree(tree, query = '') {
     }
 
     safeArray(currentTree).forEach(n => {
-        if (currentQuery) {
-            if (!nodeMatchesQuery(n, currentQuery)) return;
-        }
+        if (currentQuery && !nodeMatchesQuery(n, currentQuery)) return;
         renderNode(n, root, currentQuery);
     });
 }
 
-function nodeMatchesQuery(node, query) {
-    if (!node) return false;
-    const q = query.toLowerCase();
-    if ((node.title || '').toLowerCase().includes(q)) return true;
-    if (safeArray(node.links).some(l => (((l?.title || '') + ' ' + (l?.url || '')).toLowerCase().includes(q)))) return true;
-    return safeArray(node.children).some(c => nodeMatchesQuery(c, q));
-}
-
 async function loadAndRender(query = '') {
-    const res = await chrome.storage.local.get(STORAGE_KEY);
+    const res  = await chrome.storage.local.get(STORAGE_KEY);
     const tree = Array.isArray(res[STORAGE_KEY]) ? res[STORAGE_KEY] : [];
     renderTree(tree, query);
 }
 
-/* ─────────────────── Keyboard navigation ─────────────────── */
-
+/* ─── Keyboard navigation ─── */
 let navIndex = -1;
 let navItems = [];
 
 function updateNavItems() {
-    // Collect all visible .link elements (hidden ones are inside display:none parents)
     navItems = Array.from(document.querySelectorAll('#tree .link')).filter(el => el.offsetParent !== null);
 }
 
 function setNavFocus(index) {
     navItems.forEach(el => el.classList.remove('kb-focused'));
-
     if (navItems.length === 0) { navIndex = -1; return; }
-
-    // Wrap around
     if (index < 0) index = navItems.length - 1;
     if (index >= navItems.length) index = 0;
-
     navIndex = index;
     navItems[navIndex].classList.add('kb-focused');
     navItems[navIndex].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -242,35 +249,28 @@ function resetNav() {
     navItems = [];
 }
 
-/* ─────────────────── Controls ─────────────────── */
-
+/* ─── Controls ─── */
 document.getElementById('openOptions').addEventListener('click', () => {
     try { chrome.runtime.openOptionsPage(); }
     catch { window.open('options.html', '_blank'); }
 });
 
-/* Expand / Collapse all toggle */
 document.getElementById('toggleAll').addEventListener('click', () => {
     if (allCollapsed) {
         collapsed.clear();
         allCollapsed = false;
     } else {
-        // Collect all folder IDs in current tree
         function collectIds(nodes) {
-            safeArray(nodes).forEach(n => {
-                if (!n) return;
-                collapsed.add(n.id);
-                collectIds(n.children);
-            });
+            safeArray(nodes).forEach(n => { if (!n) return; collapsed.add(n.id); collectIds(n.children); });
         }
         collectIds(currentTree);
         allCollapsed = true;
     }
+    saveCollapsed();
     renderTree(currentTree, currentQuery);
 });
 
-/* Search input */
-const searchEl = document.getElementById('popupSearch');
+const searchEl  = document.getElementById('popupSearch');
 let searchTimer = null;
 
 searchEl.addEventListener('input', () => {
@@ -278,21 +278,16 @@ searchEl.addEventListener('input', () => {
     searchTimer = setTimeout(() => loadAndRender(searchEl.value.trim()), 200);
 });
 
-/* ─────────────────── Keyboard shortcuts ─────────────────── */
-
+/* ─── Keyboard shortcuts ─── */
 document.addEventListener('keydown', e => {
     const inSearch = document.activeElement === searchEl;
 
-    /* ArrowDown / ArrowUp — navigate through links */
+    /* ↑ / ↓ — navigate links */
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
-
-        // Blur search so text cursor doesn't interfere
         if (inSearch) searchEl.blur();
-
         updateNavItems();
         if (navItems.length === 0) return;
-
         setNavFocus(e.key === 'ArrowDown' ? navIndex + 1 : navIndex - 1);
         return;
     }
@@ -306,33 +301,39 @@ document.addEventListener('keydown', e => {
         return;
     }
 
-    /* Ctrl/Cmd + Q — focus search */
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'q') {
+    /* Alt + Q — focus search
+       NOTE: The browser command Alt+Q opens the popup via background.js.
+       Once the popup is open, pressing Alt+Q again focuses the search field. */
+    if (e.altKey && e.key.toLowerCase() === 'q') {
         e.preventDefault();
         searchEl.focus();
         searchEl.select();
         return;
     }
 
-    /* Escape — clear search or blur */
+    /* Escape — clear search or deselect */
     if (e.key === 'Escape') {
         if (inSearch) {
             searchEl.value = '';
             searchEl.blur();
             loadAndRender('');
         } else {
-            // Clear keyboard nav highlight
             navItems.forEach(el => el.classList.remove('kb-focused'));
             navIndex = -1;
         }
     }
 });
 
-/* ─────────────────── Boot ─────────────────── */
-
+/* ─── Boot ─── */
 window.addEventListener('load', () => {
     searchEl.value = '';
-    loadAndRender('');
-    searchEl.focus();
-    searchEl.select();
+
+    // Load settings (theme etc.), collapsed state, then tree
+    loadAndApplySettings(() => {
+        loadCollapsed(() => {
+            loadAndRender('');
+            searchEl.focus();
+            searchEl.select();
+        });
+    });
 });

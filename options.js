@@ -1,11 +1,22 @@
-// options.js
-const STORAGE_KEY = 'linkTree';
-const BACKUP_KEY = 'linkTree_backup';
+/* ════════════════════════════════════════════════════
+   options.js — Link Tree Manager v1.4
+   ════════════════════════════════════════════════════ */
 
-/* ─────────────────── Utilities ─────────────────── */
+const STORAGE_KEY  = 'linkTree';
+const BACKUP_KEY   = 'linkTree_backup';
+const SETTINGS_KEY = 'appSettings';
 
+/* ─── Default settings ─── */
+const DEFAULT_SETTINGS = {
+    theme:      'light',   // 'light' | 'dark'
+    compactMode: false,
+    autosave:   false
+};
+
+/* ─── Utilities ─── */
 const uid = () => (crypto?.randomUUID?.() ?? ('id-' + Date.now() + '-' + Math.random().toString(36).slice(2)));
 const safeArray = v => Array.isArray(v) ? v : [];
+const $ = id => document.getElementById(id);
 
 function clone(obj) {
     try { return JSON.parse(JSON.stringify(obj)); } catch { return obj; }
@@ -13,46 +24,31 @@ function clone(obj) {
 
 function debounce(fn, ms = 300) {
     let t;
-    return (...args) => {
-        clearTimeout(t);
-        t = setTimeout(() => fn.apply(this, args), ms);
-    };
+    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 }
 
 function isValidUrl(v) {
-    try { new URL(v); return true; }
-    catch { return false; }
+    try { new URL(v); return true; } catch { return false; }
 }
 
-/* ─────────────────── Normalization ─────────────────── */
-
+/* ─── Normalization ─── */
 function normalizeNode(node) {
     if (!node || node.type !== 'folder') return null;
     return {
-        id: typeof node.id === 'string' ? node.id : uid(),
-        type: 'folder',
-        title: typeof node.title === 'string' ? node.title : '',
+        id:       typeof node.id    === 'string' ? node.id    : uid(),
+        type:     'folder',
+        title:    typeof node.title === 'string' ? node.title : '',
         children: safeArray(node.children).map(normalizeNode).filter(Boolean),
-        links: safeArray(node.links).map(l => ({
-            id: typeof l?.id === 'string' ? l.id : uid(),
+        links:    safeArray(node.links).map(l => ({
+            id:    typeof l?.id    === 'string' ? l.id    : uid(),
             title: typeof l?.title === 'string' ? l.title : '',
-            url: typeof l?.url === 'string' ? l.url : ''
+            url:   typeof l?.url   === 'string' ? l.url   : ''
         }))
     };
 }
+function normalizeTree(data) { return safeArray(data).map(normalizeNode).filter(Boolean); }
 
-function normalizeTree(data) {
-    return safeArray(data).map(normalizeNode).filter(Boolean);
-}
-
-/* ─────────────────── Storage helpers ─────────────────── */
-
-function loadFromStorage(cb) {
-    chrome.storage.local.get([STORAGE_KEY], res => {
-        try { cb(normalizeTree(res?.[STORAGE_KEY])); } catch { cb([]); }
-    });
-}
-
+/* ─── Storage ─── */
 function persistToStorage(tree, cb) {
     chrome.storage.local.get([STORAGE_KEY], res => {
         const current = safeArray(res?.[STORAGE_KEY]);
@@ -61,16 +57,63 @@ function persistToStorage(tree, cb) {
         });
     });
 }
-
 function loadBackup(cb) {
     chrome.storage.local.get([BACKUP_KEY], res => cb(normalizeTree(res?.[BACKUP_KEY])));
 }
 
-/* ─────────────────── Export / Import helpers ─────────────────── */
+/* ─── Settings storage ─── */
+let currentSettings = { ...DEFAULT_SETTINGS };
 
-/**
- * Returns true if the tree has at least one folder with a link or title.
- */
+function loadSettings(cb) {
+    chrome.storage.local.get([SETTINGS_KEY], res => {
+        const saved = res?.[SETTINGS_KEY] || {};
+        currentSettings = { ...DEFAULT_SETTINGS, ...saved };
+        cb && cb(currentSettings);
+    });
+}
+
+function saveSettings(cb) {
+    chrome.storage.local.set({ [SETTINGS_KEY]: currentSettings }, () => cb && cb());
+}
+
+function applySettings(s) {
+    // Theme
+    document.documentElement.setAttribute('data-theme', s.theme === 'dark' ? 'dark' : 'light');
+
+    // Compact mode on tree panel
+    const panel = $('treePanel');
+    if (panel) panel.classList.toggle('compact', !!s.compactMode);
+
+    // Sync checkboxes
+    const elDark    = $('settingDark');
+    const elCompact = $('settingCompact');
+    const elAuto    = $('settingAutosave');
+    if (elDark)    elDark.checked    = s.theme === 'dark';
+    if (elCompact) elCompact.checked = !!s.compactMode;
+    if (elAuto)    elAuto.checked    = !!s.autosave;
+
+    // Autosave
+    setupAutosave(!!s.autosave);
+}
+
+/* ─── Autosave ─── */
+let autosaveTimer = null;
+
+function setupAutosave(enabled) {
+    clearInterval(autosaveTimer);
+    autosaveTimer = null;
+    if (!enabled) return;
+    autosaveTimer = setInterval(() => {
+        if (!unsaved) return;
+        const normalized = normalizeTree(currentTree);
+        persistToStorage(normalized, () => {
+            savedTreeSnapshot = clone(normalized);
+            setUnsaved(false);
+        });
+    }, 30000);
+}
+
+/* ─── Export / Import tree ─── */
 function hasExportableContent(tree) {
     if (!Array.isArray(tree) || tree.length === 0) return false;
     function check(nodes) {
@@ -83,204 +126,147 @@ function hasExportableContent(tree) {
     return check(tree);
 }
 
-/**
- * Build the new readable TXT format (no emoji):
- *
- * === LINK TREE ===
- *
- * Папка: Root folder
- * --название: Link title
- * --ссылка: https://example.com
- * ====
- * --название: Link 2
- * --ссылка: https://example2.com
- *
- *   Папка: Child folder
- *   --название: Child link
- *   --ссылка: https://child.com
- */
 function buildTxtContent(tree) {
-    const lines = [];
-    lines.push('=== LINK TREE ===');
-    lines.push('');
-
+    const lines = ['=== LINK TREE ===', ''];
     function walk(nodes, depth) {
         const pad = '  '.repeat(depth);
-        nodes.forEach(node => {
+        for (const node of nodes) {
             lines.push(`${pad}Папка: ${node.title}`);
-
             const links = safeArray(node.links);
-            links.forEach((link, li) => {
+            links.forEach((link, i) => {
                 lines.push(`${pad}--название: ${link.title || ''}`);
                 lines.push(`${pad}--ссылка: ${link.url || ''}`);
-                if (li < links.length - 1) lines.push(`${pad}====`);
+                if (i < links.length - 1) lines.push(`${pad}====`);
             });
-
-            if (safeArray(node.children).length > 0) {
-                walk(node.children, depth + 1);
-            }
-
+            if (safeArray(node.children).length > 0) walk(node.children, depth + 1);
             if (depth === 0) lines.push('');
-        });
+        }
     }
-
     walk(tree, 0);
     return lines.join('\n');
 }
 
-/**
- * Export tree to TXT and trigger download.
- * @param {Array}   tree          Current tree data
- * @param {boolean} useUniqueName Use date-stamped filename instead of overwriting
- */
 function exportTreeToTxt(tree, useUniqueName = false) {
     if (!hasExportableContent(tree)) {
         alert('Нечего экспортировать: дерево пустое или не содержит ссылок.');
         return;
     }
-
-    const content = buildTxtContent(tree);
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const blob = new Blob([buildTxtContent(tree)], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
-
-    let filename;
-    let conflictAction;
-
-    if (useUniqueName) {
-        const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-        filename = `linkTree-${today}.txt`;
-        conflictAction = 'uniquify'; // browser appends (1), (2)… if date collision
-    } else {
-        filename = 'linkTree.txt';
-        conflictAction = 'overwrite';
-    }
-
-    chrome.downloads.download({ url, filename, conflictAction, saveAs: false });
+    const today = new Date().toISOString().slice(0, 10);
+    chrome.downloads.download({
+        url,
+        filename:       useUniqueName ? `linkTree-${today}.txt` : 'linkTree.txt',
+        conflictAction: useUniqueName ? 'uniquify' : 'overwrite',
+        saveAs: false
+    });
     setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
-/* ─────────────────── Import / Parse ─────────────────── */
-
-/**
- * Detect format by presence of "Папка:" marker.
- */
 function parseTxtToTree(text) {
-    if (text.includes('Папка:')) {
-        return parseNewFormat(text);
-    }
-    return parseOldFormat(text);
+    return text.includes('Папка:') ? parseNewFormat(text) : parseOldFormat(text);
 }
 
-/** New format: "Папка:", "--название:", "--ссылка:", "====" */
 function parseNewFormat(text) {
     const root = [];
     const stack = [{ depth: -1, node: null, children: root }];
     let currentLink = null;
-
     for (const rawLine of text.split('\n')) {
         if (!rawLine.trim()) continue;
-        const content = rawLine.trim();
-
+        const content   = rawLine.trim();
         if (content === '====' || content.startsWith('=== ')) continue;
-
-        const indentLen = rawLine.match(/^( *)/)[1].length;
-        const depth = Math.floor(indentLen / 2);
-
+        const depth = Math.floor(rawLine.match(/^( *)/)[1].length / 2);
         if (content.startsWith('Папка:')) {
-            const folder = {
-                id: uid(), type: 'folder',
-                title: content.slice('Папка:'.length).trim(),
-                children: [], links: []
-            };
-            while (stack.length > 1 && stack[stack.length - 1].depth >= depth) {
-                stack.pop();
-            }
+            const folder = { id: uid(), type: 'folder', title: content.slice(6).trim(), children: [], links: [] };
+            while (stack.length > 1 && stack[stack.length - 1].depth >= depth) stack.pop();
             stack[stack.length - 1].children.push(folder);
             stack.push({ depth, node: folder, children: folder.children });
             currentLink = null;
-
         } else if (content.startsWith('--название:')) {
             const parentNode = stack[stack.length - 1].node;
             if (!parentNode) continue;
-            currentLink = {
-                id: uid(),
-                title: content.slice('--название:'.length).trim(),
-                url: ''
-            };
+            currentLink = { id: uid(), title: content.slice(11).trim(), url: '' };
             parentNode.links.push(currentLink);
-
         } else if (content.startsWith('--ссылка:') && currentLink) {
-            currentLink.url = content.slice('--ссылка:'.length).trim();
-            currentLink = null; // one url per link entry; next --название starts fresh
+            currentLink.url = content.slice(9).trim();
+            currentLink = null;
         }
     }
-
     return root;
 }
 
-/** Legacy emoji format: "📁", "🔗", url on its own line */
 function parseOldFormat(text) {
-    const lines = text.split('\n');
     const root = [];
     const stack = [{ depth: -1, node: null, children: root }];
     let lastLink = null;
-
-    lines.forEach(line => {
-        if (!line.trim()) return;
-        if (line.startsWith('===')) return;
-
-        const depth = (line.match(/^ */)[0].length) / 2;
+    for (const line of text.split('\n')) {
+        if (!line.trim() || line.startsWith('===')) continue;
+        const depth   = (line.match(/^ */)[0].length) / 2;
         const content = line.trim();
-
         if (content.startsWith('📁')) {
-            const folder = {
-                id: uid(), type: 'folder',
-                title: content.replace('📁', '').trim(),
-                children: [], links: []
-            };
-            while (stack.length && stack[stack.length - 1].depth >= depth) {
-                stack.pop();
-            }
+            const folder = { id: uid(), type: 'folder', title: content.replace('📁', '').trim(), children: [], links: [] };
+            while (stack.length && stack[stack.length - 1].depth >= depth) stack.pop();
             stack[stack.length - 1].children.push(folder);
             stack.push({ depth, node: folder, children: folder.children });
             lastLink = null;
-
         } else if (content.startsWith('🔗')) {
             const link = { id: uid(), title: content.replace('🔗', '').trim(), url: '' };
-            const parentFolder = stack[stack.length - 1].node;
-            if (parentFolder) {
-                parentFolder.links.push(link);
-                lastLink = link;
-            }
-
+            const parent = stack[stack.length - 1].node;
+            if (parent) { parent.links.push(link); lastLink = link; }
         } else if (content.startsWith('http') && lastLink) {
             lastLink.url = content.trim();
             lastLink = null;
         }
-    });
-
+    }
     return root;
 }
 
-/* ─────────────────── Tree helpers ─────────────────── */
+/* ─── Settings export / import ─── */
+function buildSettingsTxt(s) {
+    return [
+        '=== SETTINGS ===',
+        `theme: ${s.theme}`,
+        `compactMode: ${s.compactMode}`,
+        `autosave: ${s.autosave}`
+    ].join('\n');
+}
 
-function findParentAndIndex(list, id, parentNode = null) {
+function parseSettingsTxt(text) {
+    if (!text.includes('=== SETTINGS ===')) throw new Error('Неверный формат файла настроек.');
+    const result = { ...DEFAULT_SETTINGS };
+    for (const line of text.split('\n')) {
+        const [key, ...rest] = line.split(':').map(s => s.trim());
+        const val = rest.join(':').trim();
+        if (!key || !val) continue;
+        if (key === 'theme'       && (val === 'light' || val === 'dark')) result.theme = val;
+        if (key === 'compactMode') result.compactMode = val === 'true';
+        if (key === 'autosave')   result.autosave    = val === 'true';
+    }
+    return result;
+}
+
+function exportSettingsTxt() {
+    const blob = new Blob([buildSettingsTxt(currentSettings)], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    chrome.downloads.download({ url, filename: 'linkTree-settings.txt', conflictAction: 'overwrite', saveAs: false });
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+/* ─── Tree helpers ─── */
+function findParentAndIndex(list, id) {
     if (!Array.isArray(list)) return null;
     for (let i = 0; i < list.length; i++) {
-        const n = list[i];
-        if (!n) continue;
-        if (n.id === id) return { parentArray: list, index: i, parentNode };
-        const res = findParentAndIndex(n.children, id, n);
+        const n = list[i]; if (!n) continue;
+        if (n.id === id) return { parentArray: list, index: i };
+        const res = findParentAndIndex(n.children, id);
         if (res) return res;
     }
     return null;
 }
-
 function findLinkParent(list, linkId) {
     if (!Array.isArray(list)) return null;
     for (let i = 0; i < list.length; i++) {
-        const n = list[i];
-        if (!n) continue;
+        const n = list[i]; if (!n) continue;
         const idx = safeArray(n.links).findIndex(l => l?.id === linkId);
         if (idx !== -1) return { parentNode: n, index: idx };
         const res = findLinkParent(n.children, linkId);
@@ -288,104 +274,80 @@ function findLinkParent(list, linkId) {
     }
     return null;
 }
-
-function swapInArray(arr, i, j) {
-    if (!Array.isArray(arr)) return;
-    if (i < 0 || j < 0 || i >= arr.length || j >= arr.length) return;
+function swap(arr, i, j) {
+    if (!Array.isArray(arr) || i < 0 || j < 0 || i >= arr.length || j >= arr.length) return;
     [arr[i], arr[j]] = [arr[j], arr[i]];
 }
 
-function moveFolder(folderId, direction) {
-    const loc = findParentAndIndex(currentTree, folderId);
-    if (!loc) return;
-    const { parentArray, index } = loc;
-    const newIndex = index + direction;
-    if (newIndex < 0 || newIndex >= parentArray.length) return;
-    swapInArray(parentArray, index, newIndex);
-    setUnsaved(true);
-    renderTree(currentTree);
+function moveFolder(id, dir) {
+    const loc = findParentAndIndex(currentTree, id); if (!loc) return;
+    const ni = loc.index + dir;
+    if (ni < 0 || ni >= loc.parentArray.length) return;
+    swap(loc.parentArray, loc.index, ni);
+    setUnsaved(true); renderTree(currentTree);
 }
-
-function moveLinkUpDown(linkId, direction) {
-    const loc = findLinkParent(currentTree, linkId);
-    if (!loc) return;
-    const { parentNode, index } = loc;
-    const newIndex = index + direction;
-    if (newIndex < 0 || newIndex >= parentNode.links.length) return;
-    swapInArray(parentNode.links, index, newIndex);
-    setUnsaved(true);
-    renderTree(currentTree);
+function moveLinkUpDown(id, dir) {
+    const loc = findLinkParent(currentTree, id); if (!loc) return;
+    const ni = loc.index + dir;
+    if (ni < 0 || ni >= loc.parentNode.links.length) return;
+    swap(loc.parentNode.links, loc.index, ni);
+    setUnsaved(true); renderTree(currentTree);
 }
 
 function removeEmptyFolders(list) {
     if (!Array.isArray(list)) return [];
-    const out = [];
-    for (const n of list) {
-        if (!n) continue;
+    return list.filter(n => {
+        if (!n) return false;
         n.children = removeEmptyFolders(n.children);
-        if (safeArray(n.children).length === 0 && safeArray(n.links).length === 0) continue;
-        out.push(n);
-    }
-    return out;
+        return n.children.length > 0 || safeArray(n.links).length > 0;
+    });
 }
 
-function sortTreeInPlace(list) {
-    if (!Array.isArray(list)) return;
-    list.sort((a, b) => ((a?.title || '').toLowerCase()).localeCompare((b?.title || '').toLowerCase()));
-    for (const node of list) {
-        if (!node) continue;
-        if (Array.isArray(node.children)) sortTreeInPlace(node.children);
-        if (Array.isArray(node.links)) {
-            node.links.sort((x, y) => ((x?.title || '').toLowerCase()).localeCompare((y?.title || '').toLowerCase()));
-        }
-    }
-}
-
-/* ─────────────────── Filter ─────────────────── */
-
+/* ─── Filter ─── */
 function filterTree(list, q) {
     if (!q) return clone(list);
     const needle = q.toLowerCase();
-
     function filterNode(node) {
         if (!node) return null;
         const titleMatch = (node.title || '').toLowerCase().includes(needle);
-        const links = safeArray(node.links)
-            .filter(l => (((l?.title || '') + ' ' + (l?.url || '')).toLowerCase().includes(needle)))
-            .map(l => ({ ...l }));
-        const children = safeArray(node.children).map(filterNode).filter(Boolean);
-        if (titleMatch || links.length || children.length) {
-            return { id: node.id, type: 'folder', title: node.title, links, children };
-        }
+        const links      = safeArray(node.links).filter(l => (((l?.title || '') + ' ' + (l?.url || '')).toLowerCase().includes(needle))).map(l => ({ ...l }));
+        const children   = safeArray(node.children).map(filterNode).filter(Boolean);
+        if (titleMatch || links.length || children.length) return { ...node, links, children };
         return null;
     }
-
     return safeArray(list).map(filterNode).filter(Boolean);
 }
 
-/* ─────────────────── UI State ─────────────────── */
-
-let currentTree = [];
-let savedTreeSnapshot = [];
-let unsaved = false;
-let movingNode = null;
-let movingLink = null;
-let currentQuery = '';
+/* ─── UI State ─── */
+let currentTree        = [];
+let savedTreeSnapshot  = [];
+let unsaved            = false;
+let movingNode         = null;
+let movingLink         = null;
+let currentQuery       = '';
 
 function setUnsaved(flag) {
     unsaved = !!flag;
-    const el = document.getElementById('unsavedIndicator');
-    if (el) el.style.display = unsaved ? 'inline-block' : 'none';
+    const el = $('unsavedIndicator');
+    if (el) el.style.display = unsaved ? 'inline-flex' : 'none';
 }
 
-/* ─────────────────── Rendering ─────────────────── */
+/* ─── Rendering ─── */
+function mkBtn(text, title_, cls, handler) {
+    const b = document.createElement('button');
+    b.className = cls || 'btn small';
+    b.textContent = text;
+    b.title = title_;
+    b.addEventListener('click', e => { e.stopPropagation(); handler(); });
+    return b;
+}
 
 function createNodeRow(node) {
     const row = document.createElement('div');
     row.className = 'node-row';
 
-    const leftWrap = document.createElement('div');
-    leftWrap.style.cssText = 'display:flex;align-items:center;gap:8px;flex:1';
+    const left = document.createElement('div');
+    left.style.cssText = 'display:flex;align-items:center;gap:8px;flex:1;min-width:0';
 
     const icon = document.createElement('div');
     icon.className = 'icon';
@@ -396,96 +358,69 @@ function createNodeRow(node) {
     title.value = node.title || '';
     title.addEventListener('input', () => {
         const loc = findParentAndIndex(currentTree, node.id);
-        if (loc) {
-            loc.parentArray[loc.index].title = title.value;
-            setUnsaved(true);
-        }
+        if (loc) { loc.parentArray[loc.index].title = title.value; setUnsaved(true); }
     });
 
-    leftWrap.append(icon, title);
+    left.append(icon, title);
 
     const actions = document.createElement('div');
     actions.className = 'node-actions';
 
-    function mkBtn(text, title_, handler) {
-        const b = document.createElement('button');
-        b.className = 'btn small';
-        b.textContent = text;
-        b.title = title_;
-        b.addEventListener('click', e => { e.stopPropagation(); handler(); });
-        return b;
-    }
-
-    // Paste clipboard (folder or link)
-    const btnPaste = mkBtn('⤓', 'Вставить сюда', () => {
-        const loc = findParentAndIndex(currentTree, node.id);
-        if (!loc) return;
-        const target = loc.parentArray[loc.index];
-
-        if (movingNode) {
+    actions.append(
+        mkBtn('⤓', 'Вставить сюда', 'btn small', () => {
+            const loc = findParentAndIndex(currentTree, node.id); if (!loc) return;
+            const target = loc.parentArray[loc.index];
+            if (movingNode) {
+                target.children = safeArray(target.children);
+                target.children.push(clone(movingNode));
+                movingNode = null;
+            } else if (movingLink) {
+                target.links = safeArray(target.links);
+                target.links.push(clone(movingLink));
+                movingLink = null;
+            }
+            setUnsaved(true); renderTree(currentTree);
+        }),
+        mkBtn('+📁', 'Добавить подпапку', 'btn small', () => {
+            const loc = findParentAndIndex(currentTree, node.id); if (!loc) return;
+            const target = loc.parentArray[loc.index];
             target.children = safeArray(target.children);
-            target.children.push(clone(movingNode));
-            movingNode = null;
-            setUnsaved(true);
-            renderTree(currentTree);
-        } else if (movingLink) {
+            target.children.push({ id: uid(), type: 'folder', title: 'Новая папка', children: [], links: [] });
+            setUnsaved(true); renderTree(currentTree);
+        }),
+        mkBtn('+🔗', 'Добавить ссылку', 'btn small', () => {
+            const loc = findParentAndIndex(currentTree, node.id); if (!loc) return;
+            const target = loc.parentArray[loc.index];
             target.links = safeArray(target.links);
-            target.links.push(clone(movingLink));
+            target.links.push({ id: uid(), title: '', url: '' });
+            setUnsaved(true); renderTree(currentTree);
+        }),
+        mkBtn('⬆', 'Вверх',  'btn small', () => moveFolder(node.id, -1)),
+        mkBtn('⬇', 'Вниз',   'btn small', () => moveFolder(node.id,  1)),
+        mkBtn('✂', 'Вырезать', 'btn small', () => {
+            const loc = findParentAndIndex(currentTree, node.id); if (!loc) return;
+            movingNode = clone(loc.parentArray[loc.index]);
+            loc.parentArray.splice(loc.index, 1);
             movingLink = null;
-            setUnsaved(true);
-            renderTree(currentTree);
-        }
-    });
+            setUnsaved(true); renderTree(currentTree);
+        }),
+        (() => {
+            const b = document.createElement('button');
+            b.className = 'btn small btn-danger';
+            b.textContent = '🗑';
+            b.title = 'Удалить папку';
+            b.addEventListener('click', e => {
+                e.stopPropagation();
+                if (!confirm('Удалить папку и всё её содержимое?')) return;
+                const loc = findParentAndIndex(currentTree, node.id); if (!loc) return;
+                loc.parentArray.splice(loc.index, 1);
+                setUnsaved(true); renderTree(currentTree);
+            });
+            return b;
+        })()
+    );
 
-    const btnAddF = mkBtn('+📁', 'Добавить подпапку', () => {
-        const loc = findParentAndIndex(currentTree, node.id);
-        if (!loc) return;
-        const target = loc.parentArray[loc.index];
-        target.children = safeArray(target.children);
-        target.children.push({ id: uid(), type: 'folder', title: 'Новая папка', children: [], links: [] });
-        setUnsaved(true);
-        renderTree(currentTree);
-    });
-
-    const btnAddL = mkBtn('+🔗', 'Добавить ссылку', () => {
-        const loc = findParentAndIndex(currentTree, node.id);
-        if (!loc) return;
-        const target = loc.parentArray[loc.index];
-        target.links = safeArray(target.links);
-        target.links.push({ id: uid(), title: '', url: '' });
-        setUnsaved(true);
-        renderTree(currentTree);
-    });
-
-    const btnUp   = mkBtn('⬆', 'Вверх',  () => moveFolder(node.id, -1));
-    const btnDown = mkBtn('⬇', 'Вниз',   () => moveFolder(node.id, 1));
-
-    const btnCut = mkBtn('✂', 'Вырезать (переместить)', () => {
-        const loc = findParentAndIndex(currentTree, node.id);
-        if (!loc) return;
-        movingNode = clone(loc.parentArray[loc.index]);
-        loc.parentArray.splice(loc.index, 1);
-        movingLink = null;
-        setUnsaved(true);
-        renderTree(currentTree);
-    });
-
-    const btnDel = document.createElement('button');
-    btnDel.className = 'btn small btn-danger';
-    btnDel.textContent = '🗑';
-    btnDel.title = 'Удалить папку';
-    btnDel.addEventListener('click', e => {
-        e.stopPropagation();
-        if (!confirm('Удалить папку и всё её содержимое?')) return;
-        const loc = findParentAndIndex(currentTree, node.id);
-        if (!loc) return;
-        loc.parentArray.splice(loc.index, 1);
-        setUnsaved(true);
-        renderTree(currentTree);
-    });
-
-    actions.append(btnPaste, btnAddF, btnAddL, btnUp, btnDown, btnCut, btnDel);
-    row.append(leftWrap, actions);
+    row.append(left, actions);
     return row;
 }
 
@@ -496,83 +431,65 @@ function createLinkRow(link) {
     const left = document.createElement('div');
     left.className = 'link-fields';
 
-    const titleInput = document.createElement('input');
-    titleInput.className = 'link-title';
-    titleInput.placeholder = 'Название';
-    titleInput.value = link.title || '';
-    titleInput.addEventListener('input', debounce(() => {
-        link.title = titleInput.value;
+    const ti = document.createElement('input');
+    ti.className = 'link-title';
+    ti.placeholder = 'Название';
+    ti.value = link.title || '';
+    ti.addEventListener('input', debounce(() => { link.title = ti.value; setUnsaved(true); }, 300));
+
+    const ui = document.createElement('input');
+    ui.className = 'link-url';
+    ui.placeholder = 'URL';
+    ui.value = link.url || '';
+    ui.classList.toggle('invalid', !isValidUrl(link.url));
+    ui.addEventListener('input', debounce(() => {
+        link.url = ui.value;
+        ui.classList.toggle('invalid', !isValidUrl(ui.value));
         setUnsaved(true);
     }, 300));
 
-    const urlInput = document.createElement('input');
-    urlInput.className = 'link-url';
-    urlInput.placeholder = 'URL';
-    urlInput.value = link.url || '';
-    urlInput.classList.toggle('invalid', !isValidUrl(link.url));
-    urlInput.addEventListener('input', debounce(() => {
-        link.url = urlInput.value;
-        urlInput.classList.toggle('invalid', !isValidUrl(urlInput.value));
-        setUnsaved(true);
-    }, 300));
-
-    left.append(titleInput, urlInput);
+    left.append(ti, ui);
 
     const actions = document.createElement('div');
-    actions.style.cssText = 'display:flex;gap:6px;align-items:center';
+    actions.style.cssText = 'display:flex;gap:4px;align-items:center;flex-shrink:0';
 
-    function mkBtn(text, title_, handler) {
-        const b = document.createElement('button');
-        b.className = 'btn small';
-        b.textContent = text;
-        b.title = title_;
-        b.addEventListener('click', e => { e.stopPropagation(); handler(); });
-        return b;
-    }
+    actions.append(
+        mkBtn('⬆', 'Вверх',  'btn small', () => moveLinkUpDown(link.id, -1)),
+        mkBtn('⬇', 'Вниз',   'btn small', () => moveLinkUpDown(link.id,  1)),
+        mkBtn('✂', 'Вырезать', 'btn small', () => {
+            const p = findLinkParent(currentTree, link.id); if (!p) return;
+            movingLink = clone(p.parentNode.links[p.index]);
+            p.parentNode.links.splice(p.index, 1);
+            movingNode = null;
+            setUnsaved(true); renderTree(currentTree);
+        }),
+        (() => {
+            const b = document.createElement('button');
+            b.className = 'btn small btn-danger';
+            b.textContent = '🗑';
+            b.title = 'Удалить ссылку';
+            b.addEventListener('click', e => {
+                e.stopPropagation();
+                const p = findLinkParent(currentTree, link.id); if (!p) return;
+                p.parentNode.links.splice(p.index, 1);
+                setUnsaved(true); renderTree(currentTree);
+            });
+            return b;
+        })()
+    );
 
-    const btnUp   = mkBtn('⬆', 'Вверх',  () => moveLinkUpDown(link.id, -1));
-    const btnDown = mkBtn('⬇', 'Вниз',   () => moveLinkUpDown(link.id, 1));
-
-    const btnCut = mkBtn('✂', 'Вырезать', () => {
-        const p = findLinkParent(currentTree, link.id);
-        if (!p) return;
-        movingLink = clone(p.parentNode.links[p.index]);
-        p.parentNode.links.splice(p.index, 1);
-        movingNode = null;
-        setUnsaved(true);
-        renderTree(currentTree);
-    });
-
-    const btnDel = document.createElement('button');
-    btnDel.className = 'btn small btn-danger';
-    btnDel.textContent = '🗑';
-    btnDel.title = 'Удалить ссылку';
-    btnDel.addEventListener('click', e => {
-        e.stopPropagation();
-        const p = findLinkParent(currentTree, link.id);
-        if (!p) return;
-        p.parentNode.links.splice(p.index, 1);
-        setUnsaved(true);
-        renderTree(currentTree);
-    });
-
-    actions.append(btnUp, btnDown, btnCut, btnDel);
     row.append(left, actions);
     return row;
 }
 
 function renderNode(node, container) {
     if (!node) return;
-
     const wrap = document.createElement('div');
     wrap.className = 'folder';
-
-    const header = createNodeRow(node);
-    wrap.appendChild(header);
+    wrap.appendChild(createNodeRow(node));
 
     const linksWrap = document.createElement('div');
     linksWrap.className = 'links';
-
     safeArray(node.links).forEach(link => linksWrap.appendChild(createLinkRow(link)));
     safeArray(node.children).forEach(child => renderNode(child, linksWrap));
 
@@ -581,7 +498,7 @@ function renderNode(node, container) {
 }
 
 function renderTree(tree) {
-    const root = document.getElementById('tree');
+    const root = $('tree');
     if (!root) return;
     root.innerHTML = '';
 
@@ -590,38 +507,20 @@ function renderTree(tree) {
         return;
     }
 
-    let toRender = tree;
-    if (currentQuery.trim()) toRender = filterTree(tree, currentQuery);
-
+    const toRender = currentQuery.trim() ? filterTree(tree, currentQuery) : tree;
     const frag = document.createDocumentFragment();
     safeArray(toRender).forEach(n => renderNode(n, frag));
     root.appendChild(frag);
 }
 
-/* ─────────────────── Controls wiring ─────────────────── */
-
-const $ = id => document.getElementById(id);
-
-const elAddRoot    = $('addRoot');
-const elSave       = $('saveBtn');
-const elCancel     = $('cancelBtn');
-const elExport     = $('exportBtn');
-const elExportUniq = $('exportUnique');
-const elImport     = $('importFile');
-const elSort       = $('sortBtn');
-const elClean      = $('cleanBtn');
-const elUndo       = $('undoBtn');
-const elSearch     = $('search');
-const elClearSearch = $('clearSearch');
-
-elAddRoot.addEventListener('click', () => {
+/* ─── Controls wiring ─── */
+$('addRoot').addEventListener('click', () => {
     currentTree = safeArray(currentTree);
     currentTree.push({ id: uid(), type: 'folder', title: 'Новая папка', children: [], links: [] });
-    setUnsaved(true);
-    renderTree(currentTree);
+    setUnsaved(true); renderTree(currentTree);
 });
 
-elSave.addEventListener('click', () => {
+$('saveBtn').addEventListener('click', () => {
     const normalized = normalizeTree(currentTree);
     persistToStorage(normalized, () => {
         savedTreeSnapshot = clone(normalized);
@@ -630,85 +529,101 @@ elSave.addEventListener('click', () => {
     });
 });
 
-elCancel.addEventListener('click', () => {
+$('cancelBtn').addEventListener('click', () => {
     if (!unsaved) return;
     if (!confirm('Отменить несохранённые изменения?')) return;
     currentTree = clone(savedTreeSnapshot);
-    setUnsaved(false);
-    renderTree(currentTree);
+    setUnsaved(false); renderTree(currentTree);
 });
 
-elExport.addEventListener('click', () => {
-    const useUnique = elExportUniq?.checked ?? false;
-    exportTreeToTxt(currentTree, useUnique);
+$('exportBtn').addEventListener('click', () => {
+    exportTreeToTxt(currentTree, $('exportUnique')?.checked ?? false);
 });
 
-elImport.addEventListener('change', e => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+$('importFile').addEventListener('change', e => {
+    const file = e.target.files?.[0]; if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
         try {
             const tree = parseTxtToTree(reader.result);
-            if (!tree || tree.length === 0) {
-                alert('Файл не содержит данных или имеет неверный формат.');
-                return;
-            }
+            if (!tree || tree.length === 0) { alert('Файл не содержит данных или имеет неверный формат.'); return; }
             currentTree = tree;
-            setUnsaved(true);
-            renderTree(currentTree);
-        } catch {
-            alert('Ошибка при чтении файла TXT.');
-        } finally {
-            elImport.value = '';
-        }
+            setUnsaved(true); renderTree(currentTree);
+        } catch { alert('Ошибка при чтении файла TXT.'); }
+        finally { $('importFile').value = ''; }
     };
     reader.readAsText(file);
 });
 
-elSort.addEventListener('click', () => {
-    sortTreeInPlace(currentTree);
-    setUnsaved(true);
-    renderTree(currentTree);
-});
-
-elClean.addEventListener('click', () => {
+$('cleanBtn').addEventListener('click', () => {
     currentTree = removeEmptyFolders(currentTree);
-    setUnsaved(true);
-    renderTree(currentTree);
+    setUnsaved(true); renderTree(currentTree);
 });
 
-elUndo.addEventListener('click', () => {
+$('undoBtn').addEventListener('click', () => {
     loadBackup(backup => {
         if (!backup || backup.length === 0) { alert('Резервная копия не найдена.'); return; }
         if (!confirm('Восстановить из резервной копии? Текущий черновик будет заменён.')) return;
         currentTree = clone(backup);
         savedTreeSnapshot = clone(backup);
-        setUnsaved(true);
-        renderTree(currentTree);
+        setUnsaved(true); renderTree(currentTree);
     });
 });
 
-elSearch.addEventListener('keydown', e => {
-    if (e.key === 'Enter') {
-        currentQuery = elSearch.value.trim();
-        renderTree(currentTree);
-    }
+$('search').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { currentQuery = $('search').value.trim(); renderTree(currentTree); }
 });
-
-elClearSearch.addEventListener('click', () => {
-    elSearch.value = '';
+$('clearSearch').addEventListener('click', () => {
+    $('search').value = '';
     currentQuery = '';
     renderTree(currentTree);
 });
 
-/* Global keyboard shortcuts */
+/* ─── Settings toggles ─── */
+$('settingDark').addEventListener('change', e => {
+    currentSettings.theme = e.target.checked ? 'dark' : 'light';
+    applySettings(currentSettings);
+    saveSettings();
+});
+
+$('settingCompact').addEventListener('change', e => {
+    currentSettings.compactMode = e.target.checked;
+    applySettings(currentSettings);
+    saveSettings();
+});
+
+$('settingAutosave').addEventListener('change', e => {
+    currentSettings.autosave = e.target.checked;
+    applySettings(currentSettings);
+    saveSettings();
+});
+
+/* ─── Settings export / import ─── */
+$('exportSettings').addEventListener('click', exportSettingsTxt);
+
+$('importSettings').addEventListener('change', e => {
+    const file = e.target.files?.[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+        try {
+            const s = parseSettingsTxt(reader.result);
+            currentSettings = s;
+            applySettings(currentSettings);
+            saveSettings(() => alert('Настройки успешно импортированы.'));
+        } catch (err) {
+            alert('Ошибка импорта настроек: ' + err.message);
+        } finally { $('importSettings').value = ''; }
+    };
+    reader.readAsText(file);
+});
+
+/* ─── Global keyboard shortcuts ─── */
 window.addEventListener('keydown', e => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        elSave.click();
+        $('saveBtn').click();
     } else if (e.key === 'Escape' && unsaved) {
-        elCancel.click();
+        $('cancelBtn').click();
     }
 });
 
@@ -716,15 +631,18 @@ window.addEventListener('beforeunload', e => {
     if (unsaved) { e.preventDefault(); e.returnValue = ''; }
 });
 
-/* ─────────────────── Boot ─────────────────── */
-
+/* ─── Boot ─── */
 function loadInitial() {
-    chrome.storage.local.get([STORAGE_KEY], res => {
-        const tree = normalizeTree(res[STORAGE_KEY] || []);
-        currentTree = clone(tree);
-        savedTreeSnapshot = clone(tree);
-        setUnsaved(false);
-        renderTree(currentTree);
+    // Load settings first, then tree
+    loadSettings(s => {
+        applySettings(s);
+        chrome.storage.local.get([STORAGE_KEY], res => {
+            const tree = normalizeTree(res[STORAGE_KEY] || []);
+            currentTree       = clone(tree);
+            savedTreeSnapshot = clone(tree);
+            setUnsaved(false);
+            renderTree(currentTree);
+        });
     });
 }
 

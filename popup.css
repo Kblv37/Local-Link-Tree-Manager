@@ -1,61 +1,78 @@
-/* popup.css */
+/* ════════════════ CSS Variables ════════════════ */
 :root {
-  --bg: #ffffff;
-  --card: #ffffff;
-  --border: #e5e7eb;
-  --muted: #6b7280;
-  --text: #111827;
-  --accent: #2563eb;
-  --hover: #f3f4f6;
-  --focus-ring: rgba(37, 99, 235, 0.3);
-  --radius: 10px;
+  --bg:         #ffffff;
+  --surface:    #ffffff;
+  --border:     #e5e7eb;
+  --muted:      #6b7280;
+  --muted2:     #9ca3af;
+  --text:       #111827;
+  --text2:      #374151;
+  --accent:     #2563eb;
+  --hover:      #f3f4f6;
+  --radius:     10px;
 }
 
-* {
-  box-sizing: border-box;
+[data-theme="dark"] {
+  --bg:         #0f1117;
+  --surface:    #1a1d27;
+  --border:     #2a2f40;
+  --muted:      #8b94a8;
+  --muted2:     #5a6478;
+  --text:       #e8eaf0;
+  --text2:      #b0b8cc;
+  --accent:     #4f8ef7;
+  --hover:      #22273a;
 }
+
+/* ════════════════ Base ════════════════ */
+*, *::before, *::after { box-sizing: border-box; }
 
 body {
   margin: 0;
-  padding: 8px;
-  width: 340px;
+  padding: 6px;
+  width: 320px;
   max-height: 520px;
   overflow: auto;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial;
   font-size: 13px;
   color: var(--text);
   background: var(--bg);
+  transition: background 0.18s, color 0.18s;
 }
 
+/* ════════════════ Panel ════════════════ */
 .panel {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 8px;
-  background: var(--card);
+  padding: 6px;
+  background: var(--surface);
 }
 
-/* ── Header ── */
+/* ════════════════ Header ════════════════ */
 .head {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 6px;
+  gap: 5px;
+  margin-bottom: 5px;
 }
 
 .title {
   font-weight: 700;
-  font-size: 14px;
-  flex: 1;
+  font-size: 13px;
+  flex-shrink: 0;
 }
 
+/* Search box */
 .search {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 6px;
+  gap: 3px;
+  padding: 3px 6px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 7px;
   flex: 1;
+  background: var(--hover);
+  min-width: 0;
 }
 
 .search input {
@@ -64,15 +81,19 @@ body {
   font-size: 12px;
   width: 100%;
   background: transparent;
+  color: var(--text);
 }
 
+.search input::placeholder { color: var(--muted2); }
+
+/* Icon buttons */
 .icon-btn {
   border: 0;
   background: transparent;
   cursor: pointer;
-  padding: 4px 5px;
+  padding: 3px 4px;
   color: var(--muted);
-  border-radius: 6px;
+  border-radius: 5px;
   font-size: 14px;
   line-height: 1;
   flex-shrink: 0;
@@ -83,39 +104,37 @@ body {
   color: var(--accent);
 }
 
-/* ── Folder ── */
+/* ════════════════ Tree ════════════════ */
 .folder {
-  margin-left: 8px;
+  margin-left: 6px;
   border-left: 1px dashed var(--border);
-  padding-left: 8px;
-  margin-top: 4px;
+  padding-left: 6px;
+  margin-top: 2px;
 }
 
 .folder-row {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px 4px 4px 6px;
+  gap: 3px;
+  padding: 4px 4px;
   cursor: pointer;
   border-radius: 6px;
 }
 
-.folder-row:hover {
-  background: var(--hover);
-}
+.folder-row:hover { background: var(--hover); }
 
 .folder-icon {
-  font-size: 13px;
+  font-size: 12px;
   flex-shrink: 0;
   line-height: 1;
 }
 
 .fold-toggle {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   display: inline-grid;
   place-items: center;
-  font-size: 10px;
+  font-size: 9px;
   color: var(--muted);
   user-select: none;
   border: none;
@@ -126,7 +145,7 @@ body {
 
 .fold-name {
   font-weight: 600;
-  font-size: 13px;
+  font-size: 12.5px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -134,7 +153,7 @@ body {
   min-width: 0;
 }
 
-/* ── Count badge (link count per folder) ── */
+/* Count badge */
 .count-badge {
   display: inline-block;
   font-size: 10px;
@@ -142,62 +161,53 @@ body {
   color: var(--muted);
   background: var(--hover);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 9px;
   padding: 0 5px;
-  line-height: 16px;
+  line-height: 15px;
   flex-shrink: 0;
-  margin-left: 2px;
+  margin-left: 3px;
 }
 
-/* ── Open-all button on folder ── */
+/* Open-all button */
 .open-all-btn {
   border: 0;
   background: transparent;
   cursor: pointer;
   color: var(--muted);
-  padding: 2px 4px;
+  padding: 2px 3px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1;
   flex-shrink: 0;
   opacity: 0;
-  transition: opacity 0.15s;
+  transition: opacity 0.12s;
 }
 
-.folder-row:hover .open-all-btn {
-  opacity: 1;
-}
+.folder-row:hover .open-all-btn { opacity: 1; }
+.open-all-btn:hover { color: var(--accent); background: var(--hover); }
 
-.open-all-btn:hover {
-  color: var(--accent);
-  background: var(--hover);
-}
-
-/* ── Links list ── */
+/* ════════════════ Links ════════════════ */
 .links {
-  margin-left: 24px;
-  margin-top: 2px;
+  margin-left: 20px;
+  margin-top: 1px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
-/* ── Individual link ── */
 .link {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 6px;
+  gap: 6px;
+  padding: 4px 5px;
   border-radius: 6px;
   cursor: pointer;
   outline: none;
 }
 
-.link:hover {
-  background: var(--hover);
-}
+.link:hover { background: var(--hover); }
 
-/* Keyboard-navigation highlight */
+/* Keyboard nav highlight */
 .link.kb-focused {
   background: var(--hover);
   outline: 2px solid var(--accent);
@@ -205,8 +215,8 @@ body {
 }
 
 .favicon {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   border-radius: 3px;
   flex-shrink: 0;
 }
@@ -216,56 +226,55 @@ body {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 0px;
 }
 
 .link-title {
-  font-size: 12.5px;
+  font-size: 12px;
   font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: var(--text);
 }
 
 .link-sub {
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+/* Action buttons (visible on hover) */
 .link-actions {
   display: flex;
-  gap: 4px;
+  gap: 2px;
   flex-shrink: 0;
   opacity: 0;
-  transition: opacity 0.15s;
+  transition: opacity 0.12s;
 }
 
-.link:hover .link-actions {
-  opacity: 1;
-}
+.link:hover .link-actions,
+.link.kb-focused .link-actions { opacity: 1; }
 
 .small-btn {
   border: 0;
   background: transparent;
   cursor: pointer;
   color: var(--muted);
-  padding: 3px 5px;
+  padding: 2px 4px;
   border-radius: 4px;
-  font-size: 12px;
+  font-size: 11px;
 }
 
-.small-btn:hover {
-  color: var(--accent);
-  background: var(--hover);
-}
+.small-btn:hover { color: var(--accent); background: var(--hover); }
 
-/* ── Empty state ── */
+/* ════════════════ Empty state ════════════════ */
 .empty {
-  padding: 16px 12px;
+  padding: 14px;
   text-align: center;
-  color: var(--muted);
+  color: var(--muted2);
   font-style: italic;
+  font-size: 12px;
 }

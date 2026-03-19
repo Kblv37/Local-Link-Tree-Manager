@@ -1,4 +1,3 @@
-<!-- options.html -->
 <!DOCTYPE html>
 <html lang="ru">
 
@@ -11,54 +10,180 @@
 
 <body>
     <div class="container">
+
+        <!-- ── Page header ── -->
+        <div class="page-header">
+            <div class="page-title">🔗 Link Tree Manager</div>
+        </div>
+
+        <!-- ── Toolbar ── -->
         <div class="topbar">
             <div class="controls">
-                <button id="addRoot" class="btn">+📁</button>
-                <button id="saveBtn" class="btn">Сохранить</button>
+                <!-- Tree actions -->
+                <button id="addRoot" class="btn">+ Папка</button>
+                <button id="saveBtn" class="btn btn-primary">💾 Сохранить</button>
                 <button id="cancelBtn" class="btn small">Отмена</button>
 
+                <div class="btn-divider"></div>
+
+                <!-- Export -->
                 <div class="export-group">
-                    <button id="exportBtn" class="btn small">Экспорт</button>
-                    <label class="export-mode-label" title="Добавить дату к имени файла вместо перезаписи">
+                    <button id="exportBtn" class="btn small">📤 Экспорт</button>
+                    <label class="export-mode-label" title="Добавить дату к имени файла — не перезаписывать">
                         <input type="checkbox" id="exportUnique" />
                         уник. имя
                     </label>
                 </div>
 
-                <label for="importFile" class="btn small" title="Импорт TXT">Импорт</label>
+                <!-- Import -->
+                <label for="importFile" class="btn small" title="Импорт дерева из TXT">📥 Импорт</label>
                 <input id="importFile" type="file" accept=".txt,text/plain" style="display:none" />
 
-                <button id="sortBtn" class="btn small">A→Я</button>
-                <button id="cleanBtn" class="btn small">Очистить пустые</button>
-                <button id="undoBtn" class="btn small">Отменить</button>
+                <div class="btn-divider"></div>
+
+                <!-- Utility -->
+                <button id="cleanBtn" class="btn small">🧹 Очистить пустые</button>
+                <button id="undoBtn"  class="btn small">↩ Отменить</button>
             </div>
 
-            <div class="search" role="search" style="margin-left:10px">
-                <svg width="14" height="14" viewBox="0 0 24 24" style="opacity:.6">
-                    <path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-                    <circle cx="11" cy="11" r="6" stroke="currentColor" stroke-width="2" />
+            <!-- Search -->
+            <div class="search" role="search">
+                <svg width="14" height="14" viewBox="0 0 24 24" style="opacity:.5;flex-shrink:0">
+                    <circle cx="11" cy="11" r="6" stroke="currentColor" stroke-width="2" fill="none"/>
+                    <path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                 </svg>
-                <input id="search" placeholder="Поиск папок и ссылок (Enter)" />
-                <button id="clearSearch" class="btn small">✖</button>
+                <input id="search" placeholder="Поиск (Enter)" />
+                <button id="clearSearch" class="btn small" style="padding:2px 6px;font-size:11px">✕</button>
             </div>
 
+            <!-- Unsaved indicator -->
             <div class="meta">
                 <span id="unsavedIndicator" style="display:none" class="unsaved">
-                    Есть несохранённые изменения
+                    ⚠ Есть несохранённые изменения
                 </span>
             </div>
         </div>
 
-        <div class="panel compact">
+        <!-- ── Tree panel ── -->
+        <div class="panel compact" id="treePanel">
+            <div class="panel-title">Дерево ссылок</div>
             <div id="tree" aria-live="polite"></div>
-
             <div class="status">
-                <div class="footer">
-                    Данные хранятся локально. Нажмите «Сохранить», чтобы применить изменения.
-                </div>
+                <span class="footer-text">Данные хранятся локально. Нажмите «Сохранить» для применения изменений.</span>
             </div>
         </div>
-    </div>
+
+        <!-- ── Settings panel ── -->
+        <div class="panel" id="settingsPanel">
+            <div class="panel-title">⚙ Настройки</div>
+
+            <div class="settings-grid">
+
+                <div class="setting-item">
+                    <div class="setting-label">
+                        <span class="setting-name">🌙 Тёмная тема</span>
+                        <span class="setting-desc">Переключить тему интерфейса</span>
+                    </div>
+                    <label class="toggle">
+                        <input type="checkbox" id="settingDark" />
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-label">
+                        <span class="setting-name">⬛ Компактный режим</span>
+                        <span class="setting-desc">Уменьшить отступы в дереве</span>
+                    </div>
+                    <label class="toggle">
+                        <input type="checkbox" id="settingCompact" />
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="setting-item">
+                    <div class="setting-label">
+                        <span class="setting-name">💾 Автосохранение</span>
+                        <span class="setting-desc">Сохранять изменения каждые 30 с</span>
+                    </div>
+                    <label class="toggle">
+                        <input type="checkbox" id="settingAutosave" />
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+            </div>
+
+            <!-- Settings export / import -->
+            <div class="settings-actions">
+                <button id="exportSettings" class="btn small">📤 Экспорт настроек</button>
+                <label for="importSettings" class="btn small">📥 Импорт настроек</label>
+                <input id="importSettings" type="file" accept=".txt,text/plain" style="display:none" />
+            </div>
+        </div>
+
+        <!-- ── Documentation ── -->
+        <div class="docs-section" id="docsPanel">
+            <div class="panel-title">📖 Документация</div>
+
+            <div class="docs-grid">
+
+                <div class="docs-card">
+                    <div class="docs-card-title">🔗 О расширении</div>
+                    <ul>
+                        <li>Локальный менеджер ссылок в виде дерева</li>
+                        <li>Папки могут вкладываться друг в друга</li>
+                        <li>Данные хранятся только на вашем устройстве</li>
+                    </ul>
+                </div>
+
+                <div class="docs-card">
+                    <div class="docs-card-title">🖱 Popup</div>
+                    <ul>
+                        <li>Клик по папке — свернуть / развернуть</li>
+                        <li>Клик по ссылке — открыть в новой вкладке</li>
+                        <li>⤴⤴ — открыть все ссылки папки</li>
+                        <li>⧉ — скопировать URL</li>
+                        <li>⊞ — свернуть / развернуть всё</li>
+                    </ul>
+                </div>
+
+                <div class="docs-card">
+                    <div class="docs-card-title">⌨ Горячие клавиши</div>
+                    <ul>
+                        <li><kbd>Alt+Q</kbd> — открыть popup</li>
+                        <li><kbd>↑</kbd> <kbd>↓</kbd> — навигация по ссылкам</li>
+                        <li><kbd>Enter</kbd> — открыть выбранную ссылку</li>
+                        <li><kbd>Esc</kbd> — очистить поиск / снять выделение</li>
+                        <li><kbd>Ctrl+S</kbd> — сохранить дерево</li>
+                    </ul>
+                </div>
+
+                <div class="docs-card">
+                    <div class="docs-card-title">📤 Экспорт / Импорт</div>
+                    <ul>
+                        <li>«Экспорт» — скачать дерево как TXT</li>
+                        <li>Флаг «уник. имя» — добавляет дату в имя файла</li>
+                        <li>«Импорт» — загрузить TXT (новый и старый формат)</li>
+                        <li>Настройки экспортируются отдельно</li>
+                    </ul>
+                </div>
+
+                <div class="docs-card">
+                    <div class="docs-card-title">🛠 Редактор дерева</div>
+                    <ul>
+                        <li>+Папка — добавить корневую папку</li>
+                        <li>✂ — вырезать, ⤓ — вставить в папку</li>
+                        <li>⬆⬇ — изменить порядок</li>
+                        <li>🧹 — удалить пустые папки</li>
+                        <li>↩ Отменить — восстановить из резервной копии</li>
+                    </ul>
+                </div>
+
+            </div>
+        </div>
+
+    </div><!-- /container -->
 
     <script src="options.js"></script>
 </body>
