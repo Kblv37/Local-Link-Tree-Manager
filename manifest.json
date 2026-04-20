@@ -1,17 +1,19 @@
 {
   "manifest_version": 3,
-  "name": "Local Link Tree Manager",
-  "version": "2.3.0",
-  "description": "Локальный древовидный менеджер ссылок",
+  "name": "LLTM — Local Link Tree Manager",
+  "version": "3.7.0",
+  "description": "Local link tree manager with folders, search, drag-drop, and tab saving",
   "icons": {
-    "16": "icons/icon16.png",
-    "32": "icons/icon32.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
+    "16": "icons/icon.png",
+    "32": "icons/icon.png",
+    "48": "icons/icon.png",
+    "128": "icons/icon.png"
   },
   "permissions": [
     "storage",
-    "downloads"
+    "downloads",
+    "tabs",
+    "activeTab"
   ],
   "commands": {
     "open-search-popup": {
@@ -19,14 +21,14 @@
         "default": "Alt+Q",
         "mac": "Alt+Q"
       },
-      "description": "Открыть popup и перейти в поиск"
+      "description": "Open popup and focus search"
     }
   },
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
-      "16": "icons/icon16.png",
-      "32": "icons/icon32.png"
+      "16": "icons/icon.png",
+      "32": "icons/icon.png"
     }
   },
   "background": {

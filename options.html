@@ -1,149 +1,223 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>LLT — Настройки</title>
+    <title>Settings | LLTM</title>
     <link rel="stylesheet" href="options.css">
 </head>
 <body>
     <div class="container">
         <div class="page-header">
-            <div class="page-title">Local Link Tree Manager</div>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            <span class="page-title">LLTM</span>
+            <span id="unsavedIndicator" style="display:none" class="unsaved-badge" data-i18n="unsaved">Unsaved changes</span>
         </div>
-        <div class="topbar">
-            <div class="controls">
-                <button id="addRoot" class="btn">+ Папка</button>
-                <button id="saveBtn" class="btn btn-primary">💾 Сохранить</button>
-                <button id="cancelBtn" class="btn small">Отмена</button>
-                <div class="btn-divider"></div>
-                <div class="export-group">
-                    <button id="exportBtn" class="btn small">📤 Экспорт</button>
-                    <label class="export-mode-label" title="Добавить дату к имени файла — не перезаписывать">
-                        <input type="checkbox" id="exportUnique" />
-                        уник. имя
-                    </label>
-                </div>
-                <label for="importFile" class="btn small" title="Импорт дерева из TXT">📥 Импорт</label>
+
+        <div class="toolbar">
+            <div class="toolbar-left">
+                <button id="saveBtn" class="btn btn-primary btn-save">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                    <span data-i18n="save">Save</span>
+                </button>
+                <button id="cancelBtn" class="btn btn-sm" data-i18n="cancel">Cancel</button>
+                <div class="divider-v"></div>
+                <button id="addRoot" class="btn btn-sm">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
+                    <span data-i18n="addFolder">Folder</span>
+                </button>
+                <button id="addRootLink" class="btn btn-sm">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="10" y1="20" x2="14" y2="20"/></svg>
+                    <span data-i18n="addRootLink">Root Link</span>
+                </button>
+                <div class="divider-v"></div>
+                <button id="exportBtn" class="btn btn-sm">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    <span data-i18n="export">Export</span>
+                </button>
+                <label class="export-unique-label">
+                    <input type="checkbox" id="exportUnique" checked />
+                    <span data-i18n="uniqueName">unique name</span>
+                </label>
+                <label for="importFile" class="btn btn-sm">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    <span data-i18n="import">Import</span>
+                </label>
                 <input id="importFile" type="file" accept=".txt,text/plain" style="display:none" />
-                <div class="btn-divider"></div>
-                <button id="cleanBtn" class="btn small">🧹 Очистить пустые</button>
-                <button id="undoBtn"  class="btn small">↩ Отменить</button>
+                <div class="divider-v"></div>
+                <button id="cleanBtn" class="btn btn-sm">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+                    <span data-i18n="clean">Clean</span>
+                </button>
+                <button id="undoBtn" class="btn btn-sm">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/></svg>
+                    <span data-i18n="undo">Undo</span>
+                </button>
             </div>
-            <div class="search" role="search">
-                <svg width="14" height="14" viewBox="0 0 24 24" style="opacity:.5;flex-shrink:0">
-                    <circle cx="11" cy="11" r="6" stroke="currentColor" stroke-width="2" fill="none"/>
-                    <path d="M21 21l-4.35-4.35" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-                </svg>
-                <input id="search" placeholder="Поиск (Enter)" />
-                <button id="clearSearch" class="btn small" style="padding:2px 6px;font-size:11px">✕</button>
-            </div>
-            <div class="meta">
-                <span id="unsavedIndicator" style="display:none" class="unsaved">
-                    ⚠ Есть несохранённые изменения
-                </span>
-            </div>
-        </div>
-        <div class="panel compact" id="treePanel">
-            <div class="panel-title">Дерево ссылок</div>
-            <div id="tree" aria-live="polite"></div>
-            <div class="status">
-                <span class="footer-text">Данные хранятся локально. Нажмите «Сохранить» для применения изменений.</span>
+            <div class="toolbar-right">
+                <div class="search-box">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input id="search" data-i18n-placeholder="searchPlaceholder" placeholder="Search…" autocomplete="off" />
+                    <button id="clearSearch" class="clear-btn" data-i18n-title="clean">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </div>
             </div>
         </div>
-        <div class="panel" id="settingsPanel">
-            <div class="panel-title">⚙ Настройки</div>
-            <div class="settings-grid">
-                <div class="setting-item">
-                    <div class="setting-label">
-                        <span class="setting-name">🌙 Тёмная тема</span>
-                        <span class="setting-desc">Переключить тему интерфейса</span>
-                    </div>
-                    <label class="toggle">
-                        <input type="checkbox" id="settingDark" />
-                        <span class="toggle-slider"></span>
-                    </label>
-                </div>
-                <div class="setting-item">
-                    <div class="setting-label">
-                        <span class="setting-name">⬛ Компактный режим</span>
-                        <span class="setting-desc">Уменьшить отступы в дереве</span>
-                    </div>
-                    <label class="toggle">
-                        <input type="checkbox" id="settingCompact" />
-                        <span class="toggle-slider"></span>
-                    </label>
-                </div>
-                <div class="setting-item">
-                    <div class="setting-label">
-                        <span class="setting-name">💾 Автосохранение</span>
-                        <span class="setting-desc">Сохранять изменения каждые 30 с</span>
-                    </div>
-                    <label class="toggle">
-                        <input type="checkbox" id="settingAutosave" />
-                        <span class="toggle-slider"></span>
-                    </label>
-                </div>
+
+        <div class="main-grid">
+            <!-- Tree panel -->
+            <div class="tree-panel" id="treePanel">
+                <div class="panel-header" data-i18n="linkTree">Link Tree</div>
+                <div id="tree" aria-live="polite"></div>
+                <div class="panel-footer" data-i18n="dataLocal">Data stored locally. Press Save to apply changes.</div>
             </div>
-            <div class="settings-actions">
-                <button id="exportSettings" class="btn small">📤 Экспорт настроек</button>
-                <label for="importSettings" class="btn small">📥 Импорт настроек</label>
-                <input id="importSettings" type="file" accept=".txt,text/plain" style="display:none" />
-            </div>
-        </div>
-        <div class="docs-section" id="docsPanel">
-            <div class="panel-title">📖 Документация</div>
-            <div class="docs-grid">
-                <div class="docs-card">
-                    <div class="docs-card-title">О расширении</div>
-                    <ul>
-                        <li>Локальный менеджер ссылок в виде дерева</li>
-                        <li>Папки могут вкладываться друг в друга</li>
-                        <li>Данные хранятся только на вашем устройстве</li>
-                    </ul>
+
+            <div class="side-panel">
+                <div class="settings-panel">
+                    <div class="panel-header" data-i18n="settingsTitle">Settings</div>
+                    <div class="settings-list">
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <span class="setting-name" data-i18n="themeLabel">Theme</span>
+                                <span class="setting-desc" data-i18n="themeDesc">Interface color theme</span>
+                            </div>
+                            <select id="settingTheme" class="setting-select">
+                                <option value="light" data-i18n="themeLight">Light</option>
+                                <option value="dark" data-i18n="themeDark">Dark</option>
+                                <option value="soft-dark" data-i18n="themeSoftDark">Soft Dark</option>
+                                <option value="blue" data-i18n="themeBlue">Blue</option>
+                                <option value="green" data-i18n="themeGreen">Green</option>
+                                <option value="rose" data-i18n="themeRose">Rose</option>
+                            </select>
+                        </div>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <span class="setting-name" data-i18n="languageLabel">Language</span>
+                                <span class="setting-desc" data-i18n="languageDesc">Interface language</span>
+                            </div>
+                            <select id="settingLang" class="setting-select">
+                                <option value="en">English</option>
+                                <option value="ru">Русский</option>
+                            </select>
+                        </div>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <span class="setting-name" data-i18n="compactMode">Compact mode</span>
+                                <span class="setting-desc" data-i18n="compactModeDesc">Reduce spacing in tree</span>
+                            </div>
+                            <label class="toggle"><input type="checkbox" id="settingCompact" /><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+                        </div>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <span class="setting-name" data-i18n="autosave">Autosave</span>
+                                <span class="setting-desc" data-i18n="autosaveDesc">Save changes every 30s</span>
+                            </div>
+                            <label class="toggle"><input type="checkbox" id="settingAutosave" /><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+                        </div>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <span class="setting-name" data-i18n="showFavicons">Show favicons</span>
+                                <span class="setting-desc" data-i18n="showFaviconsDesc">Display site icons in popup</span>
+                            </div>
+                            <label class="toggle"><input type="checkbox" id="settingFavicons" /><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+                        </div>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <span class="setting-name" data-i18n="saveTabsFeature">Save Tabs feature</span>
+                                <span class="setting-desc" data-i18n="saveTabsDesc">Enable saving browser sessions</span>
+                            </div>
+                            <label class="toggle"><input type="checkbox" id="settingSaveTabs" /><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+                        </div>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <span class="setting-name" data-i18n="layoutCorrection">Layout correction</span>
+                                <span class="setting-desc" data-i18n="layoutCorrectionDesc">Auto-correct keyboard layout in search</span>
+                            </div>
+                            <label class="toggle"><input type="checkbox" id="settingLayout" checked /><span class="toggle-track"><span class="toggle-thumb"></span></span></label>
+                        </div>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <span class="setting-name" data-i18n="uiScalePopup">UI Scale (popup)</span>
+                                <span class="setting-desc" data-i18n="uiScalePopupDesc">Popup interface size (80–160%)</span>
+                            </div>
+                            <div class="scale-btns">
+                                <button class="scale-btn" id="scalePopupDec">−</button>
+                                <span class="scale-val" id="settingScaleVal">100%</span>
+                                <button class="scale-btn" id="scalePopupInc">+</button>
+                            </div>
+                        </div>
+
+                        <div class="setting-row">
+                            <div class="setting-info">
+                                <span class="setting-name" data-i18n="uiScaleSettings">UI Scale (settings)</span>
+                                <span class="setting-desc" data-i18n="uiScaleSettingsDesc">Settings page size (80–160%)</span>
+                            </div>
+                            <div class="scale-btns">
+                                <button class="scale-btn" id="scaleOptDec">−</button>
+                                <span class="scale-val" id="settingOptionsScaleVal">115%</span>
+                                <button class="scale-btn" id="scaleOptInc">+</button>
+                            </div>
+                        </div>
+
+                    </div>
+                    <div class="settings-actions">
+                        <button id="exportSettings" class="btn btn-sm">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                            <span data-i18n="exportSettings">Export settings</span>
+                        </button>
+                        <label for="importSettings" class="btn btn-sm">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            <span data-i18n="importSettings">Import settings</span>
+                        </label>
+                        <input id="importSettings" type="file" accept=".txt,text/plain" style="display:none" />
+                        <button id="exportAll" class="btn btn-sm btn-primary">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                            <span data-i18n="exportAll">Export all</span>
+                        </button>
+                        <label for="importAll" class="btn btn-sm btn-primary">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            <span data-i18n="importAll">Import all</span>
+                        </label>
+                        <input id="importAll" type="file" accept=".txt,text/plain" style="display:none" />
+                    </div>
                 </div>
-                <div class="docs-card">
-                    <div class="docs-card-title">🖱 Popup</div>
-                    <ul>
-                        <li>Клик по папке — свернуть / развернуть</li>
-                        <li>Клик по ссылке — открыть в новой вкладке</li>
-                        <li>⤴⤴ — открыть все ссылки папки</li>
-                        <li>⧉ — скопировать URL</li>
-                        <li>⊞ — свернуть / развернуть всё</li>
-                    </ul>
+
+                <div class="settings-panel" id="savedTabsSection">
+                    <div class="panel-header" data-i18n="savedTabsTitle">Saved Tab Sessions</div>
+                    <div id="savedTabsPanel" style="padding:8px 14px 12px"></div>
+                    <div class="settings-actions" style="border-top:1px solid var(--border2);padding:8px 14px">
+                        <label for="importSessionsFile" class="btn btn-sm">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            <span data-i18n="importSessions">Import sessions</span>
+                        </label>
+                        <input id="importSessionsFile" type="file" accept=".txt,text/plain" style="display:none" />
+                    </div>
                 </div>
-                <div class="docs-card">
-                    <div class="docs-card-title">⌨ Горячие клавиши</div>
-                    <ul>
-                        <li><kbd>Alt+Q</kbd> — открыть popup</li>
-                        <li><kbd>↑</kbd> <kbd>↓</kbd> — навигация по ссылкам</li>
-                        <li><kbd>Enter</kbd> — открыть выбранную ссылку</li>
-                        <li><kbd>Esc</kbd> — очистить поиск / снять выделение</li>
-                        <li><kbd>Alt+S</kbd> — сохранить дерево</li>
-                    </ul>
-                </div>
-                <div class="docs-card">
-                    <div class="docs-card-title">📤 Экспорт / Импорт</div>
-                    <ul>
-                        <li>«Экспорт» — скачать дерево как TXT</li>
-                        <li>Флаг «уник. имя» — добавляет дату в имя файла</li>
-                        <li>«Импорт» — загрузить TXT (новый и старый формат)</li>
-                        <li>Настройки экспортируются отдельно</li>
-                    </ul>
-                </div>
-                <div class="docs-card">
-                    <div class="docs-card-title">🛠 Редактор дерева</div>
-                    <ul>
-                        <li>+Папка — добавить корневую папку</li>
-                        <li>✂ — вырезать, ⤓ — вставить в папку</li>
-                        <li>⬆⬇ — изменить порядок</li>
-                        <li>🧹 — удалить пустые папки</li>
-                        <li>↩ Отменить — восстановить из резервной копии</li>
-                    </ul>
+
+                <div class="docs-panel">
+                    <div class="panel-header" data-i18n="shortcuts">Keyboard Shortcuts</div>
+                    <div class="shortcuts-list">
+                        <div class="shortcut-row"><kbd>Alt+Q</kbd><span data-i18n="shortcutOpen">Open popup</span></div>
+                        <div class="shortcut-row"><kbd>↑</kbd><kbd>↓</kbd><span data-i18n="shortcutNav">Navigate links</span></div>
+                        <div class="shortcut-row"><kbd>Enter</kbd><span data-i18n="shortcutNewTab">Open in new tab</span></div>
+                        <div class="shortcut-row"><kbd>←</kbd><span data-i18n="shortcutCurTab">Open in current tab</span></div>
+                        <div class="shortcut-row"><kbd>Esc</kbd><span data-i18n="shortcutEsc">Clear search</span></div>
+                        <div class="shortcut-row"><kbd>Alt+S</kbd><span data-i18n="shortcutSave">Save tree</span></div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
-    <script src="options.js"></script>
+    <div id="toast" class="toast"></div>
+    <script type="module" src="options.js"></script>
 </body>
 </html>
