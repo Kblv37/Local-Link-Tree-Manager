@@ -38,45 +38,57 @@ export function normalizeTree(data) {
 }
 
 export function filterTree(list, query) {
-    if (!query || !query.trim()) return clone(safeArray(list));
-    const needle = query.toLowerCase();
+    if (!query || !query.trim()) return safeArray(list);
+    const needle = query.toLowerCase().trim();
+
+    function linkMatches(l) {
+        return l != null && ((l.title || '') + ' ' + (l.url || '') + ' ' + (l.description || '')).toLowerCase().includes(needle);
+    }
 
     function filterNode(node) {
         if (!node) return null;
 
         if (node.__isRoot) {
-            const filteredLinks = safeArray(node.links)
-                .filter(l => ((l?.title || '') + ' ' + (l?.url || '') + ' ' + (l?.description || '')).toLowerCase().includes(needle))
-                .map(l => ({ ...l }));
-            if (filteredLinks.length > 0) return { ...node, links: filteredLinks, children: [] };
-            return null;
+            const links = safeArray(node.links);
+            const out = [];
+            for (let i = 0; i < links.length; i++) {
+                if (linkMatches(links[i])) out.push(links[i]);
+            }
+            return out.length ? { ...node, links: out, children: [] } : null;
         }
 
         const titleMatch = (node.title || '').toLowerCase().includes(needle);
-
-        const filteredLinks = safeArray(node.links)
-            .filter(l => ((l?.title || '') + ' ' + (l?.url || '') + ' ' + (l?.description || '')).toLowerCase().includes(needle))
-            .map(l => ({ ...l }));
-
-        const filteredChildren = safeArray(node.children).map(filterNode).filter(Boolean);
-
-        if (filteredLinks.length > 0 || filteredChildren.length > 0) {
-            return { ...node, links: filteredLinks, children: filteredChildren };
+        const srcLinks   = safeArray(node.links);
+        const matchedLinks = [];
+        for (let i = 0; i < srcLinks.length; i++) {
+            if (linkMatches(srcLinks[i])) matchedLinks.push(srcLinks[i]);
         }
 
-        if (titleMatch && safeArray(node.links).length > 0) {
-            return { ...node, links: safeArray(node.links).map(l => ({ ...l })), children: [] };
+        const srcChildren = safeArray(node.children);
+        const matchedChildren = [];
+        for (let i = 0; i < srcChildren.length; i++) {
+            const c = filterNode(srcChildren[i]);
+            if (c) matchedChildren.push(c);
         }
 
-        if (titleMatch && safeArray(node.children).length > 0) {
-            const allChildren = safeArray(node.children).map(c => c ? { ...c } : null).filter(Boolean);
-            return { ...node, links: [], children: allChildren };
+        if (matchedLinks.length || matchedChildren.length) {
+            return { ...node, links: matchedLinks, children: matchedChildren };
+        }
+
+        if (titleMatch && (srcLinks.length || srcChildren.length)) {
+            return { ...node, links: srcLinks, children: srcChildren };
         }
 
         return null;
     }
 
-    return safeArray(list).map(filterNode).filter(Boolean);
+    const src = safeArray(list);
+    const out = [];
+    for (let i = 0; i < src.length; i++) {
+        const n = filterNode(src[i]);
+        if (n) out.push(n);
+    }
+    return out;
 }
 
 export function findParentAndIndex(list, id) {
@@ -94,10 +106,16 @@ export function findLinkParent(list, linkId) {
     if (!Array.isArray(list)) return null;
     for (let i = 0; i < list.length; i++) {
         const n = list[i]; if (!n) continue;
-        const idx = safeArray(n.links).findIndex(l => l?.id === linkId);
-        if (idx !== -1) return { parentNode: n, index: idx };
-        const res = findLinkParent(n.children, linkId);
-        if (res) return res;
+        const links = n.links;
+        if (links) {
+            for (let j = 0; j < links.length; j++) {
+                if (links[j]?.id === linkId) return { parentNode: n, index: j };
+            }
+        }
+        if (n.children) {
+            const res = findLinkParent(n.children, linkId);
+            if (res) return res;
+        }
     }
     return null;
 }
@@ -132,7 +150,14 @@ export function removeEmptyFolders(list) {
 
 export function countLinks(node) {
     if (!node) return 0;
-    return safeArray(node.links).filter(l => l?.url || l?.title).length;
+    const links = node.links;
+    if (!links) return 0;
+    let count = 0;
+    for (let i = 0; i < links.length; i++) {
+        const l = links[i];
+        if (l && (l.url || l.title)) count++;
+    }
+    return count;
 }
 
 export function nodeMatchesQuery(node, query) {
@@ -144,11 +169,15 @@ export function nodeMatchesQuery(node, query) {
 }
 
 export function findNode(list, id) {
-    for (const n of safeArray(list)) {
+    if (!Array.isArray(list)) return null;
+    for (let i = 0; i < list.length; i++) {
+        const n = list[i];
         if (!n) continue;
         if (n.id === id) return n;
-        const found = findNode(n.children, id);
-        if (found) return found;
+        if (n.children) {
+            const found = findNode(n.children, id);
+            if (found) return found;
+        }
     }
     return null;
 }

@@ -1,15 +1,15 @@
-/**
- * Returns a debounced version of fn that delays invocation by ms milliseconds.
- * Rapid consecutive calls reset the timer; only the last call fires.
- * @template {(...args: any[]) => void} T
- * @param {T} fn
- * @param {number} [ms=300]
- * @returns {T}
- */
-export function debounce(fn, ms = 300) {
+export function debounce(fn, ms = 300, opts = {}) {
     let timer;
+    let called = false;
     return function (...args) {
+        if (opts.leading && !called) {
+            called = true;
+            fn.apply(this, args);
+        }
         clearTimeout(timer);
-        timer = setTimeout(() => fn.apply(this, args), ms);
+        timer = setTimeout(() => {
+            called = false;
+            if (!opts.leading) fn.apply(this, args);
+        }, ms);
     };
 }

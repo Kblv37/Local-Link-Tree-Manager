@@ -28,6 +28,31 @@ import { setLanguage, t, applyI18nToDOM } from './utils/i18n.js';
         setTimeout(() => t2.classList.remove('show'), 2000);
     }
 
+    function _applySettingsToUI(s) {
+        currentSettings = s;
+        setLanguage(s.language || 'en');
+        applyI18nToDOM();
+        applySettingsToDOM(currentSettings, treePanel);
+        configureFavicons(currentSettings);
+
+        const sync = (id, val) => { const el = document.getElementById(id); if (el) el.checked = val; };
+        sync('settingCompact',  !!s.compactMode);
+        sync('settingAutosave', !!s.autosave);
+        sync('settingFavicons', s.showFavicons !== false);
+        sync('settingSaveTabs', !!s.saveTabs);
+        sync('settingLayout',   s.layoutCorrection !== false);
+        _updateSessionsVisibility(!!s.saveTabs);
+
+        const themeEl = document.getElementById('settingTheme');
+        if (themeEl) themeEl.value = s.theme || 'light';
+        const langEl = document.getElementById('settingLang');
+        if (langEl) langEl.value = s.language || 'en';
+        const scaleValEl = document.getElementById('settingScaleVal');
+        if (scaleValEl) scaleValEl.textContent = `${s.uiScale ?? 100}%`;
+        const optScaleValEl = document.getElementById('settingOptionsScaleVal');
+        if (optScaleValEl) optScaleValEl.textContent = `${s.optionsScale ?? 115}%`;
+    }
+
     async function handleSave() {
         const normalized = normalizeTree(getCurrentTree());
         await saveTree(normalized);
@@ -187,26 +212,7 @@ import { setLanguage, t, applyI18nToDOM } from './utils/i18n.js';
             reader.onload = async () => {
                 try {
                     const s = parseSettingsTxt(reader.result);
-                    currentSettings = s;
-                    setLanguage(s.language || 'en');
-                    applyI18nToDOM();
-                    applySettingsToDOM(currentSettings, treePanel);
-                    configureFavicons(currentSettings);
-                    const sync = (id, val) => { const el=document.getElementById(id); if(el) el.checked=val; };
-                    sync('settingCompact',  !!s.compactMode);
-                    sync('settingAutosave', !!s.autosave);
-                    sync('settingFavicons', s.showFavicons!==false);
-                    sync('settingSaveTabs', !!s.saveTabs);
-                    sync('settingLayout',   s.layoutCorrection!==false);
-                    _updateSessionsVisibility(!!s.saveTabs);
-                    const themeEl = document.getElementById('settingTheme');
-                    if (themeEl) themeEl.value = s.theme || 'light';
-                    const langEl = document.getElementById('settingLang');
-                    if (langEl) langEl.value = s.language || 'en';
-                    const scaleValEl = document.getElementById('settingScaleVal');
-                    if (scaleValEl) scaleValEl.textContent = `${s.uiScale ?? 100}%`;
-                    const optScaleValEl = document.getElementById('settingOptionsScaleVal');
-                    if (optScaleValEl) optScaleValEl.textContent = `${s.optionsScale ?? 115}%`;
+                    _applySettingsToUI(s);
                     await saveSettings(currentSettings);
                     refreshAutosave();
                     _showToast(t('settingsImported'));
@@ -240,26 +246,7 @@ import { setLanguage, t, applyI18nToDOM } from './utils/i18n.js';
                     setUnsaved(true);
                 }
                 if (result.settings) {
-                    currentSettings = result.settings;
-                    setLanguage(currentSettings.language || 'ru');
-                    applyI18nToDOM();
-                    applySettingsToDOM(currentSettings, treePanel);
-                    configureFavicons(currentSettings);
-                    const sync = (id, val) => { const el=document.getElementById(id); if(el) el.checked=val; };
-                    sync('settingCompact',  !!currentSettings.compactMode);
-                    sync('settingAutosave', !!currentSettings.autosave);
-                    sync('settingFavicons', currentSettings.showFavicons!==false);
-                    sync('settingSaveTabs', !!currentSettings.saveTabs);
-                    sync('settingLayout',   currentSettings.layoutCorrection!==false);
-                    _updateSessionsVisibility(!!currentSettings.saveTabs);
-                    const themeEl = document.getElementById('settingTheme');
-                    if (themeEl) themeEl.value = currentSettings.theme || 'light';
-                    const langEl = document.getElementById('settingLang');
-                    if (langEl) langEl.value = currentSettings.language || 'ru';
-                    const scaleValEl = document.getElementById('settingScaleVal');
-                    if (scaleValEl) scaleValEl.textContent = `${currentSettings.uiScale ?? 100}%`;
-                    const optScaleValEl = document.getElementById('settingOptionsScaleVal');
-                    if (optScaleValEl) optScaleValEl.textContent = `${currentSettings.optionsScale ?? 115}%`;
+                    _applySettingsToUI(result.settings);
                     await saveSettings(currentSettings);
                     refreshAutosave();
                 }

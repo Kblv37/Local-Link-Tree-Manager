@@ -17,7 +17,15 @@ const IC = {
   restore:  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>'
 };
 
-function svgEl(s) { const d=document.createElement('div'); d.innerHTML=s; return d.firstElementChild; }
+const _svgCache = new Map();
+function svgEl(s) {
+  if (!_svgCache.has(s)) {
+    const d = document.createElement('div');
+    d.innerHTML = s;
+    _svgCache.set(s, d.firstElementChild);
+  }
+  return _svgCache.get(s).cloneNode(true);
+}
 
 function mkBtn(svgStr, title_, cls, handler) {
   const b = document.createElement('button');
@@ -134,7 +142,7 @@ function _renderNode(node, container) {
   for (const link of safeArray(node.links)) linksWrap.appendChild(_createLinkRow(link));
   for (const child of safeArray(node.children)) _renderNode(child, linksWrap);
   wrap.appendChild(linksWrap);
-  _wireDragNode(wrap, node.id);
+  _wireDrag(wrap, 'folder', node.id);
   container.appendChild(wrap);
 }
 
@@ -279,24 +287,43 @@ function _createLinkRow(link) {
   );
 
   row.append(dh, fields, actions);
-  _wireDragLink(row, link.id);
+  _wireDrag(row, 'link', link.id);
   return row;
 }
 
-function _wireDragNode(el, id) {
-  el.draggable=true;
-  el.addEventListener('dragstart', e => { _dragData={type:'folder',id}; e.dataTransfer.effectAllowed='move'; el.classList.add('dragging'); });
-  el.addEventListener('dragend',   () => { el.classList.remove('dragging'); document.querySelectorAll('.drop-line').forEach(d=>d.remove()); });
-  el.addEventListener('dragover',  e => { if(!_dragData) return; e.preventDefault(); e.stopPropagation(); document.querySelectorAll('.drop-line').forEach(d=>d.remove()); const l=document.createElement('div'); l.className='drop-line'; el.parentNode.insertBefore(l,el); });
-  el.addEventListener('drop',      e => { e.preventDefault(); e.stopPropagation(); document.querySelectorAll('.drop-line').forEach(d=>d.remove()); if(!_dragData||_dragData.id===id) return; _applyDrop(_dragData,{type:'folder',id}); _dragData=null; });
+function _clearDropLines() {
+  document.querySelectorAll('.drop-line').forEach(d => d.remove());
 }
 
-function _wireDragLink(el, id) {
-  el.draggable=true;
-  el.addEventListener('dragstart', e => { _dragData={type:'link',id}; e.dataTransfer.effectAllowed='move'; el.classList.add('dragging'); e.stopPropagation(); });
-  el.addEventListener('dragend',   () => { el.classList.remove('dragging'); document.querySelectorAll('.drop-line').forEach(d=>d.remove()); });
-  el.addEventListener('dragover',  e => { if(!_dragData) return; e.preventDefault(); e.stopPropagation(); document.querySelectorAll('.drop-line').forEach(d=>d.remove()); const l=document.createElement('div'); l.className='drop-line'; el.parentNode.insertBefore(l,el); });
-  el.addEventListener('drop',      e => { e.preventDefault(); e.stopPropagation(); document.querySelectorAll('.drop-line').forEach(d=>d.remove()); if(!_dragData||_dragData.id===id) return; _applyDrop(_dragData,{type:'link',id}); _dragData=null; });
+function _wireDrag(el, type, id) {
+  el.draggable = true;
+  el.addEventListener('dragstart', e => {
+    _dragData = { type, id };
+    e.dataTransfer.effectAllowed = 'move';
+    el.classList.add('dragging');
+    if (type === 'link') e.stopPropagation();
+  });
+  el.addEventListener('dragend', () => {
+    el.classList.remove('dragging');
+    _clearDropLines();
+  });
+  el.addEventListener('dragover', e => {
+    if (!_dragData) return;
+    e.preventDefault();
+    e.stopPropagation();
+    _clearDropLines();
+    const line = document.createElement('div');
+    line.className = 'drop-line';
+    el.parentNode.insertBefore(line, el);
+  });
+  el.addEventListener('drop', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    _clearDropLines();
+    if (!_dragData || _dragData.id === id) return;
+    _applyDrop(_dragData, { type, id });
+    _dragData = null;
+  });
 }
 
 function _applyDrop(src, target) {

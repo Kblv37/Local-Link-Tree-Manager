@@ -39,11 +39,9 @@ export function loadAll() {
 
 export function saveTree(tree) {
     return new Promise((resolve) => {
-        chrome.storage.local.set({ [BACKUP_KEY]: cache.tree }, () => {
-            chrome.storage.local.set({ [STORAGE_KEY]: tree }, () => {
-                cache.tree = clone(tree);
-                resolve();
-            });
+        chrome.storage.local.set({ [BACKUP_KEY]: cache.tree, [STORAGE_KEY]: tree }, () => {
+            cache.tree = clone(tree);
+            resolve();
         });
     });
 }

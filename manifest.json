@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LLTM — Local Link Tree Manager",
-  "version": "3.7.0",
+  "version": "3.7.1",
   "description": "Local link tree manager with folders, search, drag-drop, and tab saving",
   "icons": {
     "16": "icons/icon.png",
