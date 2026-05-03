@@ -1,4 +1,4 @@
-import { uid, safeArray, clone, filterTree, findParentAndIndex, findLinkParent, swap } from '../core/tree.js';
+import { uid, safeArray, clone, filterTree, filterTreeDeep, findParentAndIndex, findLinkParent, swap, findLinkDeep } from '../core/tree.js';
 import { debounce } from '../utils/debounce.js';
 import { t } from '../utils/i18n.js';
 
@@ -14,7 +14,8 @@ const IC = {
   addL:     '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="10" y1="20" x2="14" y2="20"/></svg>',
   trash:    '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>',
   drag:     '<svg width="8" height="14" viewBox="0 0 8 14" fill="currentColor"><circle cx="2" cy="2" r="1.2"/><circle cx="6" cy="2" r="1.2"/><circle cx="2" cy="7" r="1.2"/><circle cx="6" cy="7" r="1.2"/><circle cx="2" cy="12" r="1.2"/><circle cx="6" cy="12" r="1.2"/></svg>',
-  restore:  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>'
+  restore:  '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>',
+  addSub:   '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="10" y1="20" x2="14" y2="20"/><line x1="3" y1="12" x2="7" y2="12"/></svg>'
 };
 
 const _svgCache = new Map();
@@ -90,7 +91,7 @@ export function renderTree(tree, query) {
     root.appendChild(emptyDiv);
     return;
   }
-  const toRender = _currentQuery.trim() ? filterTree(tree, _currentQuery) : tree;
+  const toRender = _currentQuery.trim() ? filterTreeDeep(tree, _currentQuery) : tree;
   const frag = document.createDocumentFragment();
 
   const rootFolder = toRender.find(n => n.__isRoot);
@@ -104,7 +105,7 @@ export function renderTree(tree, query) {
     const linksWrap = document.createElement('div');
     linksWrap.className = 'links';
     linksWrap.style.marginLeft = '0';
-    for (const link of safeArray(rootFolder.links)) linksWrap.appendChild(_createLinkRow(link));
+    for (const link of safeArray(rootFolder.links)) linksWrap.appendChild(_createLinkRow(link, 0));
     section.appendChild(linksWrap);
     frag.appendChild(section);
   }
@@ -139,7 +140,7 @@ function _renderNode(node, container) {
   wrap.appendChild(_createNodeRow(node));
   const linksWrap = document.createElement('div');
   linksWrap.className = 'links';
-  for (const link of safeArray(node.links)) linksWrap.appendChild(_createLinkRow(link));
+  for (const link of safeArray(node.links)) linksWrap.appendChild(_createLinkRow(link, 0));
   for (const child of safeArray(node.children)) _renderNode(child, linksWrap);
   wrap.appendChild(linksWrap);
   _wireDrag(wrap, 'folder', node.id);
@@ -223,10 +224,35 @@ function _createNodeRow(node) {
 
 function _isValidUrl(v) { try { new URL(v); return true; } catch { return false; } }
 
-function _createLinkRow(link) {
+function _findLinkInTree(tree, linkId) {
+  function searchLinks(links) {
+    if (!Array.isArray(links)) return null;
+    for (let i = 0; i < links.length; i++) {
+      if (links[i]?.id === linkId) return { parentArray: links, index: i };
+      const inChildren = searchLinks(links[i]?.children);
+      if (inChildren) return inChildren;
+    }
+    return null;
+  }
+  function searchNodes(nodes) {
+    if (!Array.isArray(nodes)) return null;
+    for (const n of nodes) {
+      if (!n) continue;
+      const inLinks = searchLinks(n.links);
+      if (inLinks) return inLinks;
+      const inChildren = searchNodes(n.children);
+      if (inChildren) return inChildren;
+    }
+    return null;
+  }
+  return searchNodes(tree);
+}
+
+function _createLinkRow(link, depth = 0) {
   const row = document.createElement('div');
   row.className = 'link-row';
   row.dataset.linkId = link.id;
+  if (depth > 0) row.style.marginLeft = `${depth * 20}px`;
 
   const dh = document.createElement('span');
   dh.className = 'drag-handle';
@@ -260,18 +286,32 @@ function _createLinkRow(link) {
 
   const actions = document.createElement('div');
   actions.className = 'link-row-actions';
+
+  const addSubBtn = document.createElement('button');
+  addSubBtn.className = 'icon-btn-sm';
+  addSubBtn.title = t('addSubLink') || 'Add sub-link';
+  addSubBtn.appendChild(svgEl(IC.addSub));
+  addSubBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    link.children = safeArray(link.children);
+    link.children.push({ id: uid(), title: '', url: '', description: '' });
+    setUnsaved(true);
+    renderTree(_currentTree);
+  });
+
   actions.append(
+    addSubBtn,
     mkBtn(IC.up,    t('moveUp'),   'icon-btn-sm', () => {
-      const p=findLinkParent(_currentTree,link.id); if(!p||p.index===0) return;
-      swap(p.parentNode.links,p.index,p.index-1); setUnsaved(true); renderTree(_currentTree);
+      const p = _findLinkInTree(_currentTree, link.id); if(!p||p.index===0) return;
+      swap(p.parentArray, p.index, p.index-1); setUnsaved(true); renderTree(_currentTree);
     }),
     mkBtn(IC.down,  t('moveDown'), 'icon-btn-sm', () => {
-      const p=findLinkParent(_currentTree,link.id); if(!p||p.index>=p.parentNode.links.length-1) return;
-      swap(p.parentNode.links,p.index,p.index+1); setUnsaved(true); renderTree(_currentTree);
+      const p = _findLinkInTree(_currentTree, link.id); if(!p||p.index>=p.parentArray.length-1) return;
+      swap(p.parentArray, p.index, p.index+1); setUnsaved(true); renderTree(_currentTree);
     }),
     mkBtn(IC.cut,   t('cut'),      'icon-btn-sm', () => {
-      const p=findLinkParent(_currentTree,link.id); if(!p) return;
-      _movingLink=clone(p.parentNode.links[p.index]); p.parentNode.links.splice(p.index,1); _movingNode=null;
+      const p = _findLinkInTree(_currentTree, link.id); if(!p) return;
+      _movingLink=clone(p.parentArray[p.index]); p.parentArray.splice(p.index,1); _movingNode=null;
       setUnsaved(true); renderTree(_currentTree);
     }),
     (() => {
@@ -279,20 +319,35 @@ function _createLinkRow(link) {
       b.appendChild(svgEl(IC.trash));
       b.addEventListener('click', e => {
         e.stopPropagation();
-        const p=findLinkParent(_currentTree,link.id); if(!p) return;
-        p.parentNode.links.splice(p.index,1); setUnsaved(true); renderTree(_currentTree);
+        const p = _findLinkInTree(_currentTree, link.id); if(!p) return;
+        p.parentArray.splice(p.index,1); setUnsaved(true); renderTree(_currentTree);
       });
       return b;
     })()
   );
 
   row.append(dh, fields, actions);
-  _wireDrag(row, 'link', link.id);
-  return row;
+  if (depth === 0) _wireDrag(row, 'link', link.id);
+
+  const container = document.createElement('div');
+  container.className = 'link-row-container';
+  container.appendChild(row);
+
+  if (Array.isArray(link.children) && link.children.length > 0) {
+    const childWrap = document.createElement('div');
+    childWrap.className = 'link-children-wrap';
+    for (const child of link.children) {
+      childWrap.appendChild(_createLinkRow(child, depth + 1));
+    }
+    container.appendChild(childWrap);
+  }
+
+  return container;
 }
 
 function _clearDropLines() {
-  document.querySelectorAll('.drop-line').forEach(d => d.remove());
+  const lines = document.querySelectorAll('.drop-line');
+  for (const line of lines) line.remove();
 }
 
 function _wireDrag(el, type, id) {
@@ -327,73 +382,120 @@ function _wireDrag(el, type, id) {
 }
 
 function _applyDrop(src, target) {
-  if (src.type==='folder'&&target.type==='folder') {
-    const s=findParentAndIndex(_currentTree,src.id), t2=findParentAndIndex(_currentTree,target.id);
-    if(!s||!t2) return;
-    const item=s.parentArray.splice(s.index,1)[0];
-    const ni=t2.parentArray.findIndex(n=>n.id===target.id);
-    t2.parentArray.splice(ni<0?0:ni,0,item);
-  } else if (src.type==='link'&&target.type==='link') {
-    const s=findLinkParent(_currentTree,src.id), t2=findLinkParent(_currentTree,target.id);
-    if(!s||!t2) return;
-    const item=s.parentNode.links.splice(s.index,1)[0];
-    const ni=t2.parentNode.links.findIndex(l=>l.id===target.id);
-    t2.parentNode.links.splice(ni<0?0:ni,0,item);
-  } else if (src.type==='link'&&target.type==='folder') {
-    const s=findLinkParent(_currentTree,src.id), t2=findParentAndIndex(_currentTree,target.id);
-    if(!s||!t2) return;
-    const item=s.parentNode.links.splice(s.index,1)[0];
-    t2.parentArray[t2.index].links=safeArray(t2.parentArray[t2.index].links);
+  if (src.type === 'folder' && target.type === 'folder') {
+    const s = findParentAndIndex(_currentTree, src.id);
+    const t2 = findParentAndIndex(_currentTree, target.id);
+    if (!s || !t2) return;
+    const item = s.parentArray.splice(s.index, 1)[0];
+    const ni = t2.parentArray.findIndex(n => n.id === target.id);
+    t2.parentArray.splice(ni < 0 ? 0 : ni, 0, item);
+
+  } else if (src.type === 'link' && target.type === 'link') {
+    const s = _findLinkInTree(_currentTree, src.id);
+    const t2 = _findLinkInTree(_currentTree, target.id);
+    if (!s || !t2) return;
+    const item = s.parentArray.splice(s.index, 1)[0];
+    const ni = t2.parentArray.findIndex(l => l.id === target.id);
+    t2.parentArray.splice(ni < 0 ? 0 : ni, 0, item);
+
+  } else if (src.type === 'link' && target.type === 'folder') {
+    const s = _findLinkInTree(_currentTree, src.id);
+    const t2 = findParentAndIndex(_currentTree, target.id);
+    if (!s || !t2) return;
+    const item = s.parentArray.splice(s.index, 1)[0];
+    t2.parentArray[t2.index].links = safeArray(t2.parentArray[t2.index].links);
     t2.parentArray[t2.index].links.push(item);
   }
-  setUnsaved(true); renderTree(_currentTree);
+
+  setUnsaved(true);
+  renderTree(_currentTree);
 }
 
 function _wireToolbar(state) {
   $('addRoot')?.addEventListener('click', () => {
-    _currentTree=safeArray(_currentTree);
-    _currentTree.push({ id:uid(), type:'folder', title:t('newFolder'), children:[], links:[] });
-    setUnsaved(true); renderTree(_currentTree);
+    _currentTree = safeArray(_currentTree);
+    _currentTree.push({
+      id: uid(),
+      type: 'folder',
+      title: t('newFolder'),
+      children: [],
+      links: []
+    });
+    setUnsaved(true);
+    renderTree(_currentTree);
   });
 
   $('addRootLink')?.addEventListener('click', () => {
-    _currentTree=safeArray(_currentTree);
+    _currentTree = safeArray(_currentTree);
     let rootFolder = _currentTree.find(n => n.__isRoot);
     if (!rootFolder) {
-      rootFolder = { id: uid(), type: 'folder', title: '__ROOT__', __isRoot: true, children: [], links: [] };
+      rootFolder = {
+        id: uid(),
+        type: 'folder',
+        title: '__ROOT__',
+        __isRoot: true,
+        children: [],
+        links: []
+      };
       _currentTree.unshift(rootFolder);
     }
     rootFolder.links = safeArray(rootFolder.links);
-    rootFolder.links.push({ id: uid(), title: '', url: '', description: '' });
-    setUnsaved(true); renderTree(_currentTree);
+    rootFolder.links.push({
+      id: uid(),
+      title: '',
+      url: '',
+      description: ''
+    });
+    setUnsaved(true);
+    renderTree(_currentTree);
   });
 
-  $('saveBtn')?.addEventListener('click',   () => state.onSave());
+  $('saveBtn')?.addEventListener('click', () => state.onSave());
   $('cancelBtn')?.addEventListener('click', () => state.onCancel());
   $('exportBtn')?.addEventListener('click', () => state.onExport($('exportUnique')?.checked ?? true));
-  $('importFile')?.addEventListener('change', e => { const f=e.target.files?.[0]; if(!f) return; state.onImport(f); $('importFile').value=''; });
-  $('cleanBtn')?.addEventListener('click',  () => state.onClean());
-  $('undoBtn')?.addEventListener('click',   () => state.onUndo());
+  $('importFile')?.addEventListener('change', e => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    state.onImport(f);
+    $('importFile').value = '';
+  });
+  $('cleanBtn')?.addEventListener('click', () => state.onClean());
+  $('undoBtn')?.addEventListener('click', () => state.onUndo());
 }
 
 function _wireSettings(state) {
   const treePanel = $('treePanel');
   const s = state.settings;
 
-  const sync = (id, val) => { const el=$(id); if(el) el.checked=val; };
-  sync('settingCompact',  !!s.compactMode);
-  sync('settingAutosave', !!s.autosave);
-  sync('settingFavicons', s.showFavicons!==false);
-  sync('settingSaveTabs', !!s.saveTabs);
-  sync('settingLayout',   s.layoutCorrection!==false);
+  const syncCheckbox = (id, val) => {
+    const el = $(id);
+    if (el) el.checked = val;
+  };
+  syncCheckbox('settingCompact', !!s.compactMode);
+  syncCheckbox('settingAutosave', !!s.autosave);
+  syncCheckbox('settingFavicons', s.showFavicons !== false);
+  syncCheckbox('settingSaveTabs', !!s.saveTabs);
+  syncCheckbox('settingLayout', s.layoutCorrection !== false);
+  syncCheckbox('settingNestedLinks', !!s.nestedLinksEnabled);
+  syncCheckbox('settingNestedLinksSearch', !!s.nestedLinksSearch);
+
+  const altQSelect = $('settingAltQMode');
+  if (altQSelect) {
+    altQSelect.value = s.altQMode || 'popup';
+    altQSelect.addEventListener('change', e => state.onSettingChange('altQMode', e.target.value));
+  }
 
   const themeSelect = $('settingTheme');
-  if (themeSelect) themeSelect.value = s.theme || 'light';
-  themeSelect?.addEventListener('change', e => state.onSettingChange('theme', e.target.value));
+  if (themeSelect) {
+    themeSelect.value = s.theme || 'light';
+    themeSelect.addEventListener('change', e => state.onSettingChange('theme', e.target.value));
+  }
 
   const langSelect = $('settingLang');
-  if (langSelect) langSelect.value = s.language || 'en';
-  langSelect?.addEventListener('change', e => state.onSettingChange('language', e.target.value));
+  if (langSelect) {
+    langSelect.value = s.language || 'en';
+    langSelect.addEventListener('change', e => state.onSettingChange('language', e.target.value));
+  }
 
   const scaleValEl = $('settingScaleVal');
   let _popupScale = s.uiScale ?? 100;
@@ -425,22 +527,34 @@ function _wireSettings(state) {
     state.onSettingChange('optionsScale', _optScale);
   });
 
-  $('settingCompact')?.addEventListener('change',  e => state.onSettingChange('compactMode', e.target.checked));
+  $('settingCompact')?.addEventListener('change', e => state.onSettingChange('compactMode', e.target.checked));
   $('settingAutosave')?.addEventListener('change', e => state.onSettingChange('autosave', e.target.checked));
   $('settingFavicons')?.addEventListener('change', e => state.onSettingChange('showFavicons', e.target.checked));
   $('settingSaveTabs')?.addEventListener('change', e => state.onSettingChange('saveTabs', e.target.checked));
-  $('settingLayout')?.addEventListener('change',   e => state.onSettingChange('layoutCorrection', e.target.checked));
+  $('settingLayout')?.addEventListener('change', e => state.onSettingChange('layoutCorrection', e.target.checked));
+  $('settingNestedLinks')?.addEventListener('change', e => state.onSettingChange('nestedLinksEnabled', e.target.checked));
+  $('settingNestedLinksSearch')?.addEventListener('change', e => state.onSettingChange('nestedLinksSearch', e.target.checked));
 
   $('exportSettings')?.addEventListener('click', () => state.onExportSettings?.());
-  $('importSettings')?.addEventListener('change', e => { const f=e.target.files?.[0]; if(!f) return; state.onImportSettings?.(f); $('importSettings').value=''; });
+  $('importSettings')?.addEventListener('change', e => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    state.onImportSettings?.(f);
+    $('importSettings').value = '';
+  });
 }
 
 function _wireSearch() {
   $('search')?.addEventListener('input', debounce(() => {
-    _currentQuery=$('search').value.trim(); renderTree(_currentTree);
+    _currentQuery = $('search').value.trim();
+    renderTree(_currentTree);
   }, 200));
+
   $('clearSearch')?.addEventListener('click', () => {
-    $('search').value=''; _currentQuery=''; renderTree(_currentTree);
+    const searchEl = $('search');
+    if (searchEl) searchEl.value = '';
+    _currentQuery = '';
+    renderTree(_currentTree);
   });
 }
 

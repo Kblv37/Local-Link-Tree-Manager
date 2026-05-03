@@ -15,17 +15,24 @@ export function hasExportableContent(tree) {
 
 export function buildTxtContent(tree) {
     const lines = ['=== LINK TREE EXPORT ===', `Date: ${new Date().toISOString().slice(0, 10)}`, ''];
+
+    function walkLinks(links, pad) {
+        for (const link of links) {
+            lines.push(`${pad}  Title: ${link.title || ''}`);
+            lines.push(`${pad}  URL:   ${link.url || ''}`);
+            if (link.description) lines.push(`${pad}  Desc:  ${link.description}`);
+            lines.push(`${pad}  ---`);
+            if (link.children && link.children.length > 0) {
+                walkLinks(link.children, pad + '  ');
+            }
+        }
+    }
+
     function walk(nodes, depth) {
         const pad = '  '.repeat(depth);
         for (const node of nodes) {
             lines.push(`${pad}[Folder] ${node.title}`);
-            const links = safeArray(node.links);
-            for (const link of links) {
-                lines.push(`${pad}  Title: ${link.title || ''}`);
-                lines.push(`${pad}  URL:   ${link.url || ''}`);
-                if (link.description) lines.push(`${pad}  Desc:  ${link.description}`);
-                lines.push(`${pad}  ---`);
-            }
+            walkLinks(safeArray(node.links), pad);
             if (safeArray(node.children).length > 0) walk(node.children, depth + 1);
             if (depth === 0) lines.push('');
         }
@@ -34,9 +41,10 @@ export function buildTxtContent(tree) {
     return lines.join('\n');
 }
 
-export function exportTreeToTxt(tree, useUniqueName = true) {
+export function exportTreeToTxt(tree, useUniqueName = true, onAlert) {
     if (!hasExportableContent(tree)) {
-        alert('Nothing to export: tree is empty or contains no links.');
+        const msg = 'Nothing to export: tree is empty or contains no links.';
+        if (onAlert) onAlert(msg); else alert(msg);
         return;
     }
     const blob = new Blob([buildTxtContent(tree)], { type: 'text/plain;charset=utf-8' });
@@ -59,30 +67,65 @@ export function parseTxtToTree(text) {
 
 function parseNewFormat(text) {
     const root = [];
-    const stack = [{ depth: -1, node: null, children: root }];
+    const folderStack = [{ depth: -1, node: null, children: root }];
+    let linkStack = [];
     let currentLink = null;
+
     for (const rawLine of text.split('\n')) {
         if (!rawLine.trim()) continue;
         const content = rawLine.trim();
         if (content.startsWith('===') || content.startsWith('Date:')) continue;
         const depth = Math.floor(rawLine.match(/^( *)/)[1].length / 2);
+
         if (content.startsWith('[Folder]')) {
             const folder = { id: uid(), type: 'folder', title: content.slice(8).trim(), children: [], links: [] };
-            while (stack.length > 1 && stack[stack.length - 1].depth >= depth) stack.pop();
-            stack[stack.length - 1].children.push(folder);
-            stack.push({ depth, node: folder, children: folder.children });
+            while (folderStack.length > 1 && folderStack[folderStack.length - 1].depth >= depth) folderStack.pop();
+            folderStack[folderStack.length - 1].children.push(folder);
+            folderStack.push({ depth, node: folder, children: folder.children });
+            linkStack = [];
             currentLink = null;
         } else if (content.startsWith('Title:')) {
-            const parentNode = stack[stack.length - 1].node;
+            const parentNode = folderStack[folderStack.length - 1].node;
             if (!parentNode) continue;
-            currentLink = { id: uid(), title: content.slice(6).trim(), url: '', description: '' };
-            parentNode.links.push(currentLink);
+            const newLink = { id: uid(), title: content.slice(6).trim(), url: '', description: '', children: [] };
+
+            while (linkStack.length > 0 && linkStack[linkStack.length - 1].depth >= depth) {
+                linkStack.pop();
+            }
+
+            if (linkStack.length === 0) {
+                parentNode.links.push(newLink);
+            } else {
+                const parentLink = linkStack[linkStack.length - 1].link;
+                parentLink.children.push(newLink);
+            }
+
+            linkStack.push({ link: newLink, depth });
+            currentLink = newLink;
         } else if (content.startsWith('URL:') && currentLink) {
             currentLink.url = content.slice(4).trim();
         } else if (content.startsWith('Desc:') && currentLink) {
             currentLink.description = content.slice(5).trim();
         }
     }
+
+    function cleanLinks(links) {
+        for (const link of links) {
+            if (link.children && link.children.length === 0) {
+                delete link.children;
+            } else if (link.children && link.children.length > 0) {
+                cleanLinks(link.children);
+            }
+        }
+    }
+    function cleanTree(nodes) {
+        for (const node of nodes) {
+            cleanLinks(node.links || []);
+            cleanTree(node.children || []);
+        }
+    }
+    cleanTree(root);
+
     return root;
 }
 
@@ -199,8 +242,12 @@ export function buildTabSessionsTxt(sessions) {
     return lines.join('\n');
 }
 
-export function exportTabSessionsTxt(sessions) {
-    if (!sessions || sessions.length === 0) { alert('No sessions to export.'); return; }
+export function exportTabSessionsTxt(sessions, onAlert) {
+    if (!sessions || sessions.length === 0) {
+        const msg = 'No sessions to export.';
+        if (onAlert) onAlert(msg); else alert(msg);
+        return;
+    }
     const blob = new Blob([buildTabSessionsTxt(sessions)], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const today = new Date().toISOString().slice(0, 10);

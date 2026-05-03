@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LLTM — Local Link Tree Manager",
-  "version": "3.7.1",
+  "version": "3.8.0",
   "description": "Local link tree manager with folders, search, drag-drop, and tab saving",
   "icons": {
     "16": "icons/icon.png",
@@ -13,7 +13,12 @@
     "storage",
     "downloads",
     "tabs",
-    "activeTab"
+    "activeTab",
+    "windows",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
   ],
   "commands": {
     "open-search-popup": {
@@ -21,7 +26,7 @@
         "default": "Alt+Q",
         "mac": "Alt+Q"
       },
-      "description": "Open popup and focus search"
+      "description": "Open search window"
     }
   },
   "action": {

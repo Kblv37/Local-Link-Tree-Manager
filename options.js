@@ -17,8 +17,19 @@ import { setLanguage, t, applyI18nToDOM } from './utils/i18n.js';
     loadFaviconCache();
     applyI18nToDOM();
 
+    function _updateHelpLink(lang) {
+        const helpBtn = document.getElementById('helpBtn');
+        if (helpBtn) {
+            helpBtn.href = lang === 'ru'
+                ? 'docs/lltm-guide-ru.pdf'
+                : 'docs/lltm-guide-en.pdf';
+        }
+    }
+
     let savedTreeSnapshot = clone(tree);
     let currentSettings   = { ...settings };
+
+    _updateHelpLink(settings.language || 'ru');
 
     function _showToast(msg) {
         let t2 = document.getElementById('toast');
@@ -32,6 +43,7 @@ import { setLanguage, t, applyI18nToDOM } from './utils/i18n.js';
         currentSettings = s;
         setLanguage(s.language || 'en');
         applyI18nToDOM();
+        _updateHelpLink(s.language || 'en');
         applySettingsToDOM(currentSettings, treePanel);
         configureFavicons(currentSettings);
 
@@ -41,12 +53,16 @@ import { setLanguage, t, applyI18nToDOM } from './utils/i18n.js';
         sync('settingFavicons', s.showFavicons !== false);
         sync('settingSaveTabs', !!s.saveTabs);
         sync('settingLayout',   s.layoutCorrection !== false);
+        sync('settingNestedLinks',       !!s.nestedLinksEnabled);
+        sync('settingNestedLinksSearch', !!s.nestedLinksSearch);
         _updateSessionsVisibility(!!s.saveTabs);
 
         const themeEl = document.getElementById('settingTheme');
         if (themeEl) themeEl.value = s.theme || 'light';
         const langEl = document.getElementById('settingLang');
         if (langEl) langEl.value = s.language || 'en';
+        const altQEl = document.getElementById('settingAltQMode');
+        if (altQEl) altQEl.value = s.altQMode || 'popup';
         const scaleValEl = document.getElementById('settingScaleVal');
         if (scaleValEl) scaleValEl.textContent = `${s.uiScale ?? 100}%`;
         const optScaleValEl = document.getElementById('settingOptionsScaleVal');
@@ -184,6 +200,7 @@ import { setLanguage, t, applyI18nToDOM } from './utils/i18n.js';
             if (key === 'language') {
                 setLanguage(value);
                 applyI18nToDOM();
+                _updateHelpLink(value);
                 renderTree(getCurrentTree());
                 _refreshTabsPanel();
             }

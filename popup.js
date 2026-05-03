@@ -1,6 +1,6 @@
 import { loadAll, saveTree, saveSavedTabs, getCachedTree, getCachedSavedTabs } from './storage/storage.js';
 import { applySettingsToDOM } from './core/settings.js';
-import { mount, focusSearch, updateCachedTree } from './ui/popup-ui.js';
+import { mount, focusSearch, updateCachedTree, showToast } from './ui/popup-ui.js';
 import { prewarmFavicons, configureFavicons, loadFaviconCache } from './utils/favicon.js';
 import { uid, clone } from './core/tree.js';
 import { setLanguage, t, applyI18nToDOM } from './utils/i18n.js';
@@ -27,19 +27,35 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const treeEl = document.getElementById('tree');
 
-    async function handleSavePage(targetFolderId, customTitle) {
+    async function handleSavePage(targetFolderId, customTitle, targetLinkId) {
         let tab;
         try {
             const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
             tab = tabs[0];
-        } catch { alert(t('noTabAccess')); return; }
+        } catch { showToast(t('noTabAccess')); return; }
 
-        if (!tab?.url) { alert(t('noTabUrl')); return; }
+        if (!tab?.url) { showToast(t('noTabUrl')); return; }
 
         const newLink = { id: uid(), title: customTitle || tab.title || tab.url, url: tab.url, description: '' };
         const updatedTree = clone(getCachedTree());
 
-        if (targetFolderId) {
+        if (targetLinkId) {
+            (function insertAsChild(nodes) {
+                for (const n of nodes) {
+                    if (!n) continue;
+                    for (const l of (n.links || [])) {
+                        if (l.id === targetLinkId) {
+                            l.children = l.children || [];
+                            l.children.push(newLink);
+                            return true;
+                        }
+                        if (l.children && insertAsChild([{ links: l.children, children: [] }])) return true;
+                    }
+                    if (insertAsChild(n.children || [])) return true;
+                }
+                return false;
+            })(updatedTree);
+        } else if (targetFolderId) {
             (function insertLink(nodes) {
                 for (const n of nodes) {
                     if (!n) continue;
@@ -62,13 +78,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function handleSaveTabs() {
-        if (!settings.saveTabs) { alert(t('tabsDisabled')); return; }
+        if (!settings.saveTabs) { showToast(t('tabsDisabled')); return; }
         let tabs;
         try { tabs = await chrome.tabs.query({ currentWindow: true }); }
-        catch { alert(t('noTabAccess')); return; }
+        catch { showToast(t('noTabAccess')); return; }
 
         const validTabs = tabs.filter(t2 => t2.url && !t2.url.startsWith('chrome://') && !t2.url.startsWith('about:'));
-        if (!validTabs.length) { alert(t('noSaveableTabs')); return; }
+        if (!validTabs.length) { showToast(t('noSaveableTabs')); return; }
 
         const session = {
             id:    uid(),
@@ -79,7 +95,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const updated = [session, ...getCachedSavedTabs()];
         await saveSavedTabs(updated);
-        alert(t('tabsSaved', validTabs.length));
+        showToast(t('tabsSaved', validTabs.length));
     }
 
     mount(treeEl, {

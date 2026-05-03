@@ -43,7 +43,6 @@ export function layoutVariants(query) {
     const result = [...set].filter(Boolean);
 
     if (_variantsCache.size >= _CACHE_MAX) {
-        // Evict oldest entry
         _variantsCache.delete(_variantsCache.keys().next().value);
     }
     _variantsCache.set(lower, result);

@@ -12,12 +12,16 @@ export function clone(obj) {
 
 export function normalizeLink(l) {
     if (!l) return null;
-    return {
+    const result = {
         id:          typeof l.id          === 'string' && l.id    ? l.id    : uid(),
         title:       typeof l.title       === 'string' ? l.title       : '',
         url:         typeof l.url         === 'string' ? l.url         : '',
         description: typeof l.description === 'string' ? l.description : ''
     };
+    if (Array.isArray(l.children)) {
+        result.children = l.children.map(normalizeLink).filter(Boolean);
+    }
+    return result;
 }
 
 export function normalizeNode(node) {
@@ -42,53 +46,35 @@ export function filterTree(list, query) {
     const needle = query.toLowerCase().trim();
 
     function linkMatches(l) {
-        return l != null && ((l.title || '') + ' ' + (l.url || '') + ' ' + (l.description || '')).toLowerCase().includes(needle);
+        if (!l) return false;
+        const text = (l.title || '') + ' ' + (l.url || '') + ' ' + (l.description || '');
+        return text.toLowerCase().includes(needle);
     }
 
     function filterNode(node) {
         if (!node) return null;
 
         if (node.__isRoot) {
-            const links = safeArray(node.links);
-            const out = [];
-            for (let i = 0; i < links.length; i++) {
-                if (linkMatches(links[i])) out.push(links[i]);
-            }
-            return out.length ? { ...node, links: out, children: [] } : null;
+            const links = safeArray(node.links).filter(linkMatches);
+            return links.length ? { ...node, links, children: [] } : null;
         }
 
         const titleMatch = (node.title || '').toLowerCase().includes(needle);
-        const srcLinks   = safeArray(node.links);
-        const matchedLinks = [];
-        for (let i = 0; i < srcLinks.length; i++) {
-            if (linkMatches(srcLinks[i])) matchedLinks.push(srcLinks[i]);
-        }
-
-        const srcChildren = safeArray(node.children);
-        const matchedChildren = [];
-        for (let i = 0; i < srcChildren.length; i++) {
-            const c = filterNode(srcChildren[i]);
-            if (c) matchedChildren.push(c);
-        }
+        const matchedLinks = safeArray(node.links).filter(linkMatches);
+        const matchedChildren = safeArray(node.children).map(filterNode).filter(Boolean);
 
         if (matchedLinks.length || matchedChildren.length) {
             return { ...node, links: matchedLinks, children: matchedChildren };
         }
 
-        if (titleMatch && (srcLinks.length || srcChildren.length)) {
-            return { ...node, links: srcLinks, children: srcChildren };
+        if (titleMatch && (safeArray(node.links).length || safeArray(node.children).length)) {
+            return { ...node, links: safeArray(node.links), children: safeArray(node.children) };
         }
 
         return null;
     }
 
-    const src = safeArray(list);
-    const out = [];
-    for (let i = 0; i < src.length; i++) {
-        const n = filterNode(src[i]);
-        if (n) out.push(n);
-    }
-    return out;
+    return safeArray(list).map(filterNode).filter(Boolean);
 }
 
 export function findParentAndIndex(list, id) {
@@ -178,6 +164,65 @@ export function findNode(list, id) {
             const found = findNode(n.children, id);
             if (found) return found;
         }
+    }
+    return null;
+}
+
+export function filterTreeDeep(list, query) {
+    if (!query || !query.trim()) return safeArray(list);
+    const needle = query.toLowerCase().trim();
+
+    function linkMatches(link) {
+        if (!link) return false;
+        const text = (link.title || '') + (link.url || '') + (link.description || '');
+        return text.toLowerCase().includes(needle);
+    }
+
+    function collectMatchingLinks(links) {
+        const result = [];
+        for (const link of safeArray(links)) {
+            if (!link) continue;
+            if (linkMatches(link)) {
+                result.push(link);
+            } else if (safeArray(link.children).length > 0) {
+                const deepMatches = collectMatchingLinks(link.children);
+                if (deepMatches.length > 0) {
+                    result.push({ ...link, children: deepMatches });
+                }
+            }
+        }
+        return result;
+    }
+
+    function filterNodeDeep(node) {
+        if (!node) return null;
+        const matchedLinks = collectMatchingLinks(safeArray(node.links));
+        const matchedChildren = safeArray(node.children).map(filterNodeDeep).filter(Boolean);
+        return (matchedLinks.length > 0 || matchedChildren.length > 0)
+            ? { ...node, links: matchedLinks, children: matchedChildren }
+            : null;
+    }
+
+    return safeArray(list).map(filterNodeDeep).filter(Boolean);
+}
+
+export function findLinkDeep(tree, linkId) {
+    function searchLinks(links) {
+        for (const link of safeArray(links)) {
+            if (!link) continue;
+            if (link.id === linkId) return link;
+            const found = searchLinks(link.children);
+            if (found) return found;
+        }
+        return null;
+    }
+
+    for (const node of safeArray(tree)) {
+        if (!node) continue;
+        const found = searchLinks(node.links);
+        if (found) return found;
+        const inChildren = findLinkDeep(node.children, linkId);
+        if (inChildren) return inChildren;
     }
     return null;
 }

@@ -1,4 +1,5 @@
-import { filterTree, safeArray, countLinks, findNode, findParentAndIndex, findLinkParent } from '../core/tree.js';
+
+import { filterTree, safeArray, countLinks, findNode, findParentAndIndex, findLinkParent, findLinkDeep } from '../core/tree.js';
 import { getFaviconUrl } from '../utils/favicon.js';
 import { debounce } from '../utils/debounce.js';
 import { t } from '../utils/i18n.js';
@@ -40,6 +41,10 @@ let _navIndex         = -1;
 let _navItems         = [];
 let _descTimer        = null;
 let _dragData         = null;
+let _settings         = {};
+let _sublinkPopup     = null;
+
+let _drillStack = [];
 
 const _saveCollapsedD = debounce((ids) => saveCollapsed(ids), 500);
 
@@ -48,11 +53,37 @@ const _searchDebounced = debounce(() => {
   _doRender();
 }, 120);
 
+export function showToast(message, durationMs = 3000) {
+  if (!message) return;
+  let toast = document.getElementById('lltm-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'lltm-toast';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  if (toast._hideTimer) clearTimeout(toast._hideTimer);
+  toast.classList.remove('show');
+  toast.offsetWidth;
+  toast.classList.add('show');
+  toast._hideTimer = setTimeout(() => {
+    toast.classList.remove('show');
+  }, durationMs);
+}
+
 export function mount(container, state) {
+  const toggleAllBtn = document.getElementById('toggleAll');
+  if (toggleAllBtn) {
+    const newBtn = toggleAllBtn.cloneNode(true);
+    toggleAllBtn.parentNode.replaceChild(newBtn, toggleAllBtn);
+    newBtn.addEventListener('click', _handleToggleAll);
+  }
+
   if (_mounted) {
     _cachedTree       = state.tree;
     _collapsed        = state.collapsed instanceof Set ? state.collapsed : new Set(state.collapsed);
     _layoutCorrection = (state.settings || {}).layoutCorrection !== false;
+    _settings         = state.settings || {};
     _onSavePage       = state.onSavePage;
     _onSaveTabs       = state.onSaveTabs;
     _doRender();
@@ -64,6 +95,7 @@ export function mount(container, state) {
   _collapsed        = state.collapsed instanceof Set ? state.collapsed : new Set(state.collapsed);
   _cachedTree       = state.tree;
   _layoutCorrection = (state.settings || {}).layoutCorrection !== false;
+  _settings         = state.settings || {};
   _onSavePage       = state.onSavePage;
   _onSaveTabs       = state.onSaveTabs;
 
@@ -72,7 +104,6 @@ export function mount(container, state) {
 
   _treeEl.addEventListener('click', _handleTreeClick);
 
-  document.getElementById('toggleAll')?.addEventListener('click', _handleToggleAll);
   document.getElementById('openOptions')?.addEventListener('click', () => {
     try { chrome.runtime.openOptionsPage(); } catch { window.open('options.html', '_blank'); }
   });
@@ -114,10 +145,24 @@ function _doRender() {
   if (_descPanel) { _descPanel.style.display = 'none'; clearTimeout(_descTimer); }
 
   let list;
+  let isDeepFlat = false;
   if (_query) {
-    list = _layoutCorrection
-      ? filterTreeWithLayout(_cachedTree, _query, filterTree)
-      : filterTree(_cachedTree, _query);
+    const isDeepSearch = _query.startsWith('..') || _query.startsWith('\\\\') || _query.startsWith('//');
+    if (isDeepSearch) {
+      const deepQuery = _query.slice(2).trim();
+      if (!deepQuery) {
+        list = _collectAllLinksFlat(_cachedTree);
+      } else {
+        list = _layoutCorrection
+          ? _filterTreeDeepFlatWithLayout(_cachedTree, deepQuery)
+          : _filterTreeDeepFlat(_cachedTree, deepQuery);
+      }
+      isDeepFlat = true;
+    } else {
+      list = _layoutCorrection
+        ? filterTreeWithLayout(_cachedTree, _query, filterTree)
+        : filterTree(_cachedTree, _query);
+    }
   } else {
     list = safeArray(_cachedTree);
   }
@@ -129,18 +174,24 @@ function _doRender() {
 
   const frag = document.createDocumentFragment();
 
-  for (let i = 0; i < list.length; i++) {
-    const node = list[i];
-    if (node.__isRoot) {
-      const links = node.links;
-      if (links) {
-        for (let j = 0; j < links.length; j++) {
-          const link = links[j];
-          if (link && (link.url || link.title)) frag.appendChild(_renderLink(link));
+  if (isDeepFlat) {
+    for (let i = 0; i < list.length; i++) {
+      frag.appendChild(_renderDeepResult(list[i]));
+    }
+  } else {
+    for (let i = 0; i < list.length; i++) {
+      const node = list[i];
+      if (node.__isRoot) {
+        const links = node.links;
+        if (links) {
+          for (let j = 0; j < links.length; j++) {
+            const link = links[j];
+            if (link && (link.url || link.title)) frag.appendChild(_renderLink(link));
+          }
         }
+      } else {
+        _renderNode(node, frag);
       }
-    } else {
-      _renderNode(node, frag);
     }
   }
 
@@ -173,6 +224,115 @@ function _renderEmpty() {
   actions.appendChild(btn);
   wrap.append(title, hint, actions);
   _treeEl.appendChild(wrap);
+}
+
+function _collectDeepMatches(tree, needle) {
+  const results = [];
+
+  function searchLinks(links, path) {
+    for (const link of safeArray(links)) {
+      if (!link) continue;
+      const text = ((link.title || '') + (link.url || '') + (link.description || '')).toLowerCase();
+      if (text.includes(needle)) {
+        results.push({ link, breadcrumb: path.slice() });
+      }
+      if (Array.isArray(link.children) && link.children.length > 0) {
+        searchLinks(link.children, [...path, link.title || link.url || '']);
+      }
+    }
+  }
+
+  function searchNodes(nodes, path) {
+    for (const node of safeArray(nodes)) {
+      if (!node) continue;
+      const nodePath = node.__isRoot ? path : [...path, node.title || ''];
+      searchLinks(safeArray(node.links), nodePath);
+      searchNodes(safeArray(node.children), nodePath);
+    }
+  }
+
+  searchNodes(tree, []);
+  return results;
+}
+
+function _filterTreeDeepFlat(tree, query) {
+  if (!query || !query.trim()) return [];
+  const needle = query.toLowerCase().trim();
+  return _collectDeepMatches(tree, needle);
+}
+
+function _filterTreeDeepFlatWithLayout(tree, query) {
+  if (!query || !query.trim()) return [];
+  const { layoutVariants } = _getLayoutVariants(query);
+  let best = [];
+  for (const v of layoutVariants) {
+    const r = _filterTreeDeepFlat(tree, v);
+    if (r.length > best.length) best = r;
+  }
+  return best;
+}
+
+function _collectAllLinksFlat(tree) {
+  const results = [];
+
+  function collectLinks(links, path) {
+    for (const link of safeArray(links)) {
+      if (!link || (!link.url && !link.title)) continue;
+      results.push({ link, breadcrumb: path.slice() });
+      if (Array.isArray(link.children) && link.children.length > 0) {
+        collectLinks(link.children, [...path, link.title || link.url || '']);
+      }
+    }
+  }
+
+  function collectNodes(nodes, path) {
+    for (const node of safeArray(nodes)) {
+      if (!node) continue;
+      const nodePath = node.__isRoot ? path : [...path, node.title || ''];
+      collectLinks(safeArray(node.links), nodePath);
+      collectNodes(safeArray(node.children), nodePath);
+    }
+  }
+
+  collectNodes(tree, []);
+  return results;
+}
+
+function _getLayoutVariants(query) {
+  const RU_LOWER = 'йцукенгшщзхъфывапролджэячсмитьбюё';
+  const EN_LOWER = 'qwertyuiop[]asdfghjkl;\'zxcvbnm,.`';
+  const ruToEn = new Map();
+  const enToRu = new Map();
+  for (let i = 0; i < RU_LOWER.length; i++) {
+    if (RU_LOWER[i] && EN_LOWER[i]) {
+      ruToEn.set(RU_LOWER[i], EN_LOWER[i]);
+      enToRu.set(EN_LOWER[i], RU_LOWER[i]);
+    }
+  }
+  function convert(str, map) {
+    return str.split('').map(c => map.get(c) || c).join('');
+  }
+  const lower = query.toLowerCase();
+  const set = new Set([lower, convert(lower, ruToEn), convert(lower, enToRu)]);
+  return { layoutVariants: [...set].filter(Boolean) };
+}
+
+function _renderDeepResult(item) {
+  const { link, breadcrumb } = item;
+  const el = _renderLink(link);
+  el.classList.add('deep-result');
+
+  if (breadcrumb && breadcrumb.length > 0) {
+    const crumb = document.createElement('div');
+    crumb.className = 'deep-result-crumb';
+    crumb.textContent = breadcrumb.join(' › ');
+    const content = el.querySelector('.link-content');
+    if (content) {
+      content.insertBefore(crumb, content.firstChild);
+    }
+  }
+
+  return el;
 }
 
 function _renderNode(node, container) {
@@ -302,6 +462,18 @@ function _renderLink(link) {
   actions.append(openBtn, openCurBtn, copyBtn);
   el.append(content, actions);
 
+  if (link.children && link.children.length > 0 && _settings && _settings.nestedLinksEnabled) {
+    const childIndicator = document.createElement('span');
+    childIndicator.className = 'link-has-children';
+    childIndicator.title = 'Shift+→ or click to open sub-links';
+    childIndicator.appendChild(svgEl(IC.chevR));
+    childIndicator.addEventListener('click', (e) => {
+      e.stopPropagation();
+      _drillInto(link);
+    });
+    el.insertBefore(childIndicator, actions);
+  }
+
   if (link.description) {
     el.addEventListener('mouseenter', () => {
       clearTimeout(_descTimer);
@@ -313,7 +485,6 @@ function _renderLink(link) {
   _wireDrag(el, 'link', link.id);
   return el;
 }
-
 
 function _showDesc(link) {
   if (!_descPanel) return;
@@ -382,6 +553,44 @@ function _showSavePageUI() {
   addItems(_cachedTree, 0);
   folderList.appendChild(frag);
 
+  const subLinkSection = document.createElement('div');
+  subLinkSection.style.cssText = 'border-top:1px solid var(--border);margin-top:4px;padding-top:4px';
+
+  const subLinkLabel = document.createElement('div');
+  subLinkLabel.className = 'sp-label';
+  subLinkLabel.textContent = 'Save as sub-link of:';
+  subLinkSection.appendChild(subLinkLabel);
+
+  const subLinkList = document.createElement('div');
+  subLinkList.style.maxHeight = '100px';
+  subLinkList.style.overflowY = 'auto';
+
+  function addLinkItems(nodes) {
+    for (const n of safeArray(nodes)) {
+      if (!n || n.__isRoot) continue;
+      for (const l of safeArray(n.links)) {
+        if (!l || (!l.url && !l.title)) continue;
+        const item = document.createElement('div');
+        item.className = 'sp-folder-item';
+        item.dataset.linkId = l.id;
+        const icon = document.createElement('span');
+        icon.className = 'sp-folder-icon';
+        icon.appendChild(svgEl(IC.link));
+        const lbl = document.createElement('span');
+        lbl.textContent = l.title || l.url || t('untitled');
+        item.append(icon, lbl);
+        subLinkList.appendChild(item);
+      }
+      addLinkItems(n.children);
+    }
+  }
+  addLinkItems(_cachedTree);
+
+  if (subLinkList.children.length > 0) {
+    subLinkSection.appendChild(subLinkList);
+    folderList.appendChild(subLinkSection);
+  }
+
   folderList.onclick = (e) => {
     const item = e.target.closest('.sp-folder-item');
     if (!item) return;
@@ -403,7 +612,8 @@ function _showSavePageUI() {
     const sel = folderList.querySelector('.selected');
     const folderId = sel?.dataset.folderId || null;
     const customTitle = document.getElementById('savePageTitleInput')?.value?.trim() || null;
-    await _onSavePage?.(folderId, customTitle);
+    const linkId = sel?.dataset.linkId || null;
+    await _onSavePage?.(folderId, customTitle, linkId);
   }, { once: true });
 
   newCancel?.addEventListener('click', () => { overlay.style.display = 'none'; }, { once: true });
@@ -446,24 +656,28 @@ function _toggleFolder(id) {
 }
 
 function _handleToggleAll() {
-  const all = _treeEl.querySelectorAll('[data-folder-id]');
-  const shouldCollapse = _collapsed.size === 0;
+  const all = Array.from(_treeEl.querySelectorAll('[data-folder-id]'));
+  if (!all.length) return;
+
+  let anyExpanded = false;
+  for (const f of all) {
+    let wrap = null;
+    for (const c of f.children) { if (c.classList.contains('links')) { wrap = c; break; } }
+    if (wrap && !wrap.hidden) { anyExpanded = true; break; }
+  }
 
   for (const f of all) {
     const id = f.dataset.folderId;
     let wrap = null;
-    for (const child of f.children) {
-      if (child.classList.contains('links')) { wrap = child; break; }
-    }
+    for (const c of f.children) { if (c.classList.contains('links')) { wrap = c; break; } }
     const arrow = f.firstElementChild?.querySelector('.fold-toggle');
-
-    if (shouldCollapse) {
+    if (anyExpanded) {
       _collapsed.add(id);
-      if (wrap)  wrap.hidden = true;
+      if (wrap) wrap.hidden = true;
       if (arrow) arrow.innerHTML = IC.chevR;
     } else {
       _collapsed.delete(id);
-      if (wrap)  wrap.hidden = false;
+      if (wrap) wrap.hidden = false;
       if (arrow) arrow.innerHTML = IC.chevD;
     }
   }
@@ -472,8 +686,26 @@ function _handleToggleAll() {
 
 function _openLink(url, newTab = true) {
   if (!url) return;
-  if (newTab) { try { chrome.tabs.create({ url }); } catch { window.open(url, '_blank'); } }
-  else        { try { chrome.tabs.update({ url }); } catch { window.location.href = url; } }
+  if (newTab) {
+    try { chrome.tabs.create({ url }); } catch { window.open(url, '_blank'); }
+  } else {
+    try {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        try {
+          if (tabs && tabs[0]) {
+            chrome.tabs.update(tabs[0].id, { url }, () => { window.close(); });
+          } else {
+            window.location.href = url;
+            window.close();
+          }
+        } catch {
+          window.close();
+        }
+      });
+    } catch {
+      window.close();
+    }
+  }
 }
 
 function _copyUrl(url) {
@@ -499,18 +731,27 @@ function _openAll(folderId) {
   const node = findNode(_cachedTree, folderId);
   if (!node) return;
   const links = node.links;
-  if (!links || !links.length) { alert(t('noLinks')); return; }
+  if (!links || !links.length) { showToast(t('noLinks')); return; }
   const valid = [];
   for (let i = 0; i < links.length; i++) {
     if (links[i]?.url) valid.push(links[i].url);
   }
-  if (!valid.length) { alert(t('noLinks')); return; }
+  if (!valid.length) { showToast(t('noLinks')); return; }
   if (valid.length > 6 && !confirm(`${t('openAll')}: ${valid.length}?`)) return;
   for (let i = 0; i < valid.length; i++) _openLink(valid[i], true);
 }
 
 function _updateNavItems() {
-  _navItems = Array.from(_treeEl.querySelectorAll('.links:not([hidden]) .link'));
+  const directLinks = Array.from(_treeEl.children).filter(el => el.classList.contains('link'));
+  const folderLinks = Array.from(_treeEl.querySelectorAll('.links:not([hidden]) > .link'));
+  const subLinks    = Array.from(_treeEl.querySelectorAll('.sublinks-inline:not([hidden]) > .link'));
+
+  _navItems = Array.from(_treeEl.querySelectorAll(
+    '.link:not(.sublinks-inline .sublinks-inline .link)'
+  )).filter(el => {
+    const hiddenParent = el.closest('.links[hidden], .sublinks-inline[hidden]');
+    return !hiddenParent;
+  });
 }
 
 function _setNavFocus(index) {
@@ -528,6 +769,66 @@ function _setNavFocus(index) {
 
 function _resetNav() { _navIndex = -1; _navItems = []; }
 
+function _drillInto(link) {
+  if (!link || !link.children || !link.children.length) return;
+  _drillStack.push(link);
+  _renderDrillView();
+}
+
+function _drillBack() {
+  if (!_drillStack.length) return;
+  _drillStack.pop();
+  if (_drillStack.length > 0) {
+    _renderDrillView();
+  } else {
+    _exitDrill();
+  }
+}
+
+function _exitDrill() {
+  _drillStack = [];
+  _doRender();
+  if (_searchEl) _searchEl.focus();
+}
+
+function _renderDrillView() {
+  const link = _drillStack[_drillStack.length - 1];
+  if (!link) return;
+
+  _treeEl.innerHTML = '';
+  _resetNav();
+
+  const bar = document.createElement('div');
+  bar.className = 'drill-bar';
+
+  const backBtn = document.createElement('button');
+  backBtn.className = 'drill-back-btn';
+  backBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>';
+  backBtn.title = 'Back (←)';
+  backBtn.addEventListener('click', (e) => { e.stopPropagation(); _drillBack(); });
+
+  const crumb = document.createElement('div');
+  crumb.className = 'drill-crumb';
+
+  const parts = _drillStack.map(l => l.title || l.url || '—');
+  crumb.textContent = parts.join(' › ');
+
+  bar.append(backBtn, crumb);
+  _treeEl.appendChild(bar);
+
+  const list = document.createElement('div');
+  list.className = 'drill-list';
+
+  for (const child of safeArray(link.children)) {
+    if (!child || (!child.url && !child.title)) continue;
+    const item = _renderLink(child);
+    list.appendChild(item);
+  }
+
+  _treeEl.appendChild(list);
+  _updateNavItems();
+}
+
 function _handleKeydown(e) {
   const inSearch = document.activeElement === _searchEl;
 
@@ -538,22 +839,46 @@ function _handleKeydown(e) {
     _setNavFocus(e.key === 'ArrowDown' ? _navIndex + 1 : _navIndex - 1);
     return;
   }
+
   if (e.key === 'Enter') {
     if (_navIndex >= 0 && _navItems[_navIndex]) {
       e.preventDefault();
-      _openLink(_navItems[_navIndex].dataset.url, true);
+      if (e.shiftKey) {
+        _openLink(_navItems[_navIndex].dataset.url, false);
+      } else {
+        _openLink(_navItems[_navIndex].dataset.url, true);
+      }
     }
     return;
   }
-  if (e.key === 'ArrowLeft') {
+
+  if (e.key === 'ArrowRight' && e.shiftKey) {
+    e.preventDefault();
     if (_navIndex >= 0 && _navItems[_navIndex]) {
-      e.preventDefault();
-      _openLink(_navItems[_navIndex].dataset.url, false);
+      const linkId = _navItems[_navIndex].dataset.linkId;
+      if (linkId && _settings.nestedLinksEnabled) {
+        const link = findLinkDeep(_cachedTree, linkId);
+        if (link && link.children && link.children.length > 0) {
+          _drillInto(link);
+          return;
+        }
+      }
     }
     return;
   }
+
+  if (e.key === 'ArrowLeft' && e.shiftKey) {
+    e.preventDefault();
+    if (_drillStack.length > 0) {
+      _drillBack();
+    }
+    return;
+  }
+
   if (e.altKey && e.key.toLowerCase() === 'q') { e.preventDefault(); focusSearch(); return; }
+
   if (e.key === 'Escape') {
+    if (_drillStack.length > 0) { _exitDrill(); return; }
     if (inSearch && _searchEl) {
       _searchEl.value = '';
       _searchEl.blur();
@@ -603,31 +928,31 @@ function _wireDrag(el, type, id) {
 }
 
 function _clearDropIndicators() {
-  const inds = _treeEl.querySelectorAll('.drop-indicator');
-  for (const d of inds) d.remove();
+  const indicators = _treeEl.querySelectorAll('.drop-indicator');
+  for (const ind of indicators) ind.remove();
 }
 
 function _handleDrop(src, target) {
   const tree = getCachedTree();
 
   if (src.type === 'folder' && target.type === 'folder') {
-    const s  = findParentAndIndex(tree, src.id);
+    const s = findParentAndIndex(tree, src.id);
     const t2 = findParentAndIndex(tree, target.id);
     if (!s || !t2) return;
     const item = s.parentArray.splice(s.index, 1)[0];
-    const ni   = t2.parentArray.findIndex(n => n.id === target.id);
+    const ni = t2.parentArray.findIndex(n => n.id === target.id);
     t2.parentArray.splice(ni < 0 ? 0 : ni, 0, item);
 
   } else if (src.type === 'link' && target.type === 'link') {
-    const s  = findLinkParent(tree, src.id);
+    const s = findLinkParent(tree, src.id);
     const t2 = findLinkParent(tree, target.id);
     if (!s || !t2) return;
     const item = s.parentNode.links.splice(s.index, 1)[0];
-    const ni   = t2.parentNode.links.findIndex(l => l.id === target.id);
+    const ni = t2.parentNode.links.findIndex(l => l.id === target.id);
     t2.parentNode.links.splice(ni < 0 ? 0 : ni, 0, item);
 
   } else if (src.type === 'link' && target.type === 'folder') {
-    const s  = findLinkParent(tree, src.id);
+    const s = findLinkParent(tree, src.id);
     const t2 = findParentAndIndex(tree, target.id);
     if (!s || !t2) return;
     const item = s.parentNode.links.splice(s.index, 1)[0];
@@ -636,5 +961,8 @@ function _handleDrop(src, target) {
     tgtNode.links.push(item);
   }
 
-  saveTree(tree).then(() => { _cachedTree = tree; _doRender(); });
+  saveTree(tree).then(() => {
+    _cachedTree = tree;
+    _doRender();
+  });
 }
